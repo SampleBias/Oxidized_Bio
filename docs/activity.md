@@ -1,5 +1,21 @@
 # oxidized-bio Activity Log
 
+## 2026-01-30 12:50 - Docker Build with Warnings Suppressed
+- **Status**: ✅ Docker build completed successfully
+- **Method**: `docker build --no-cache -t oxidized-bio .`
+- **Results**:
+  - Image created: `oxidized-bio:latest` (ID: 2e7115053369)
+  - Image size: 463MB (disk), 119MB (content)
+  - Binary built: `/app/target/release/oxidized-bio` (8.8M)
+  - Warnings: 54 warnings (down from 55 - deprecation warning suppressed)
+  - Build time: ~11 minutes
+
+- **Latest Fix**:
+  - Added `#[allow(deprecated)]` to `create_chat_completion` function
+  - Suppresses the `function_call` deprecation warning from OpenAI library
+  - Field is still required by current async-openai version
+  - Code remains functional with cleaner build output
+
 ## 2026-01-30 12:45 - Docker Build Fully Resolved
 - **Status**: ✅ Docker build completed successfully
 - **Method**: `docker build --no-cache -t oxidized-bio .`
