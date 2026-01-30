@@ -4,7 +4,7 @@ use tracing::info;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/api/files/*path", post(upload_file))
+        .route("/api/files/{*path}", post(upload_file))
         .with_state(state)
 }
 

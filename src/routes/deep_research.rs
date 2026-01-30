@@ -12,7 +12,7 @@ use tracing::info;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/deep-research/start", post(start_deep_research))
-        .route("/api/deep-research/status/:message_id", get(get_status))
+        .route("/api/deep-research/status/{message_id}", get(get_status))
         .with_state(state)
 }
 
