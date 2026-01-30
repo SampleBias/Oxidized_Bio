@@ -1,1 +1,74 @@
-/target
+# Rust
+/target/
+Cargo.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+debug/
+release/
+/build/
+
+# Cargo
+.cargo/
+.cargo/
+
+# Test coverage
+tarpaulin-report.html
+lcov.info
+
+# Backup files
+*.bak
+*.backup
+
+# Node.js (if any frontend work)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python (if any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Documentation builds
+docs/_build/
+docs/site/
+
+# Secret files
+secrets/
+*.pem
+*.key
