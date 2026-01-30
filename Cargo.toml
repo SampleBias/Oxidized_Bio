@@ -1,0 +1,93 @@
+[package]
+name = "oxidized-bio"
+version = "0.1.0"
+edition = "2021"
+authors = ["Oxidized Bio Contributors"]
+license = "MIT"
+description = "A high-performance AI agent framework for biological and scientific research"
+repository = "https://github.com/your-username/oxidized-bio"
+keywords = ["ai", "biology", "scientific-research", "agent", "llm"]
+categories = ["science", "web-programming", "api-bindings"]
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid", "json", "chrono", "migrate"] }
+deadpool-postgres = "0.14"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime utilities
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
+
+# Configuration and environment
+config = "0.15"
+dotenvy = "0.15"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Authentication
+jsonwebtoken = "9"
+base64 = "0.22"
+
+# Redis (for job queue and pub/sub)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+sidekiq = "0.6"
+
+# S3/Storage
+rust-s3 = "0.34"
+
+# Vector search (pgvector)
+# pgvector-rs is optional, can use direct SQL queries
+# We'll rely on SQLx for pgvector support
+
+# File processing
+lopdf = "0.34"
+calamine = "0.26"
+csv = "1.3"
+tesseract-rs = "0.1"
+docx-rust = "0.1"
+
+# LLM providers
+async-openai = "0.26"
+# Anthropic and Google will need custom implementations
+
+# Blockchain (Base/BNB Chain for payments)
+ethers = { version = "2", features = ["abigen", "rustls"] }
+
+# Rate limiting
+governor = "0.7"
+
+# Validation
+validator = { version = "0.19", features = ["derive"] }
+
+# Utilities
+bytes = "1"
+mime = "0.3"
+mime_guess = "2"
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockito = "1"
+criterion = "0.5"
