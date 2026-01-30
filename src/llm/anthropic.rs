@@ -1,7 +1,8 @@
 // Anthropic adapter stub
 // TODO: Implement full Anthropic adapter
 
-use crate::llm::{LLMAdapter, LLMRequest, LLMResponse, AppResult};
+use crate::llm::provider::LLMAdapter;
+use crate::types::{AppResult, LLMRequest, LLMResponse};
 use async_trait::async_trait;
 
 pub struct AnthropicAdapter {
