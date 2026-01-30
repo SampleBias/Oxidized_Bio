@@ -8,7 +8,7 @@ pub mod openrouter;
 pub mod glm;
 
 pub use provider::*;
-pub use types::*;
+pub use crate::types::*;
 
 // Re-export GLM models for convenience
 pub use glm::models as glm_models;

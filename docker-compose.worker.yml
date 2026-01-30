@@ -1,0 +1,147 @@
+# ==========================================================================
+# Oxidized Bio - Worker-Only Docker Compose
+# ==========================================================================
+#
+# Deploy this to ANY server to add more worker capacity.
+# All workers connect to the same Redis queue and share the load.
+#
+# SETUP:
+#   1. Copy .env.example to .env
+#   2. Configure REDIS_URL and DATABASE_URL
+#   3. Run: docker compose -f docker-compose.worker.yml up -d
+#
+# SCALE:
+#   docker compose -f docker-compose.worker.yml up -d --scale worker=3
+#
+# LOGS:
+#   docker compose -f docker-compose.worker.yml logs -f
+#
+# ==========================================================================
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-s4mpl3bi4s/}oxidized-bio:${VERSION:-latest}
+    
+    # Override the default command to run as worker
+    command: ["/app/oxidized-bio", "--worker"]
+    
+    environment:
+      # ======================
+      # Required: Redis URL
+      # ======================
+      - REDIS_URL=${REDIS_URL:?REDIS_URL is required for workers}
+      
+      # ======================
+      # Required: Database
+      # ======================
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required for workers}
+      
+      # ======================
+      # Application Settings
+      # ======================
+      - APP_ENV=${APP_ENV:-production}
+      - RUST_LOG=${RUST_LOG:-info}
+      - RUST_BACKTRACE=${RUST_BACKTRACE:-1}
+      
+      # ======================
+      # Authentication
+      # ======================
+      - BIOAGENTS_SECRET=${BIOAGENTS_SECRET:?BIOAGENTS_SECRET is required}
+      
+      # ======================
+      # LLM Providers
+      # ======================
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GLM_API_KEY=${GLM_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      
+      # ======================
+      # Agent Configuration
+      # ======================
+      - REPLY_LLM_PROVIDER=${REPLY_LLM_PROVIDER:-openai}
+      - REPLY_LLM_MODEL=${REPLY_LLM_MODEL:-gpt-4}
+      - HYP_LLM_PROVIDER=${HYP_LLM_PROVIDER:-openai}
+      - HYP_LLM_MODEL=${HYP_LLM_MODEL:-gpt-4}
+      - PLANNING_LLM_PROVIDER=${PLANNING_LLM_PROVIDER:-openai}
+      - PLANNING_LLM_MODEL=${PLANNING_LLM_MODEL:-gpt-4}
+      
+      # ======================
+      # Embedding Configuration
+      # ======================
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      - TEXT_EMBEDDING_MODEL=${TEXT_EMBEDDING_MODEL:-text-embedding-3-large}
+      
+      # ======================
+      # External Agents
+      # ======================
+      - OPENSCHOLAR_API_URL=${OPENSCHOLAR_API_URL:-}
+      - OPENSCHOLAR_API_KEY=${OPENSCHOLAR_API_KEY:-}
+      - PRIMARY_LITERATURE_AGENT=${PRIMARY_LITERATURE_AGENT:-bio}
+      - PRIMARY_ANALYSIS_AGENT=${PRIMARY_ANALYSIS_AGENT:-edison}
+      - EDISON_API_URL=${EDISON_API_URL:-}
+      - EDISON_API_KEY=${EDISON_API_KEY:-}
+      
+      # ======================
+      # Vector Search
+      # ======================
+      - CHUNK_SIZE=${CHUNK_SIZE:-2000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+      - VECTOR_SEARCH_LIMIT=${VECTOR_SEARCH_LIMIT:-20}
+      - USE_RERANKING=${USE_RERANKING:-true}
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.75}
+      
+      # ======================
+      # Storage (S3)
+      # ======================
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      
+      # ======================
+      # Worker Settings
+      # ======================
+      - WORKER_MODE=true
+      - CHAT_QUEUE_CONCURRENCY=${CHAT_QUEUE_CONCURRENCY:-5}
+      - DEEP_RESEARCH_QUEUE_CONCURRENCY=${DEEP_RESEARCH_QUEUE_CONCURRENCY:-3}
+    
+    volumes:
+      # Shared data directories
+      - worker-data:/app/data
+      - worker-logs:/app/logs
+    
+    restart: unless-stopped
+    
+    # CRITICAL: Allow workers to finish long-running jobs before stopping
+    # Deep research jobs can run for hours
+    stop_grace_period: 8h
+    
+    # Health check - verify worker process is running
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "oxidized-bio"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Resource limits (adjust based on your server)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+volumes:
+  worker-data:
+    driver: local
+  worker-logs:
+    driver: local

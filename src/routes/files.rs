@@ -1,8 +1,8 @@
-use axum::{Router, routing::post, Json};
+use axum::{Router, routing::post, Json, extract::State};
 use crate::models::AppState;
 use tracing::info;
 
-pub fn router(state: AppState) -> Router<AppState> {
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/files/*path", post(upload_file))
         .with_state(state)

@@ -7,12 +7,14 @@ pub mod files;
 
 use axum::Router;
 use crate::models::AppState;
+use crate::rfc;
 
 pub fn create_router(state: AppState) -> Router {
+    // Each sub-router calls .with_state() internally and returns Router<()>
     Router::new()
         .merge(chat::router(state.clone()))
         .merge(deep_research::router(state.clone()))
-        .merge(health::router())
         .merge(files::router(state.clone()))
-        .with_state(state)
+        .merge(rfc::router(state))
+        .merge(health::router())
 }

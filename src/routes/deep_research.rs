@@ -2,14 +2,14 @@ use axum::{
     Router,
     routing::{get, post},
     Json,
-    extract::State,
+    extract::{State, Path},
     response::Json as ResponseJson,
 };
 use crate::models::{AppState, DeepResearchRequest, DeepResearchResponse};
 use uuid::Uuid;
 use tracing::info;
 
-pub fn router(state: AppState) -> Router<AppState> {
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/deep-research/start", post(start_deep_research))
         .route("/api/deep-research/status/:message_id", get(get_status))

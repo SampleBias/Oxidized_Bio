@@ -1,0 +1,139 @@
+# =============================================================================
+# Oxidized Bio - OpenSSH Server Configuration
+# =============================================================================
+# Secure SSH configuration for RFC remote access
+# 
+# Security features:
+#   - No root login
+#   - Key-based and password authentication
+#   - No X11 forwarding
+#   - TCP forwarding allowed (for tunneling if needed)
+#   - Client keepalive to detect disconnects
+# =============================================================================
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+Port 22
+ListenAddress 0.0.0.0
+AddressFamily any
+
+# =============================================================================
+# Host Keys
+# =============================================================================
+# Keys are stored in /etc/ssh/keys (mounted volume for persistence)
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# =============================================================================
+# Authentication
+# =============================================================================
+# Disable root login for security
+PermitRootLogin no
+
+# Enable public key authentication
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+
+# Enable password authentication (for RFC)
+PasswordAuthentication yes
+PermitEmptyPasswords no
+
+# Disable challenge-response (keyboard-interactive)
+KbdInteractiveAuthentication no
+
+# Maximum authentication attempts
+MaxAuthTries 3
+
+# Authentication timeout
+LoginGraceTime 60
+
+# =============================================================================
+# Security Settings
+# =============================================================================
+# Disable X11 forwarding (not needed)
+X11Forwarding no
+
+# Allow TCP forwarding (useful for tunneling)
+AllowTcpForwarding yes
+GatewayPorts no
+
+# Disable tunneling
+PermitTunnel no
+
+# Disable agent forwarding
+AllowAgentForwarding no
+
+# Strict mode checks file permissions
+StrictModes yes
+
+# =============================================================================
+# Session Settings
+# =============================================================================
+# Maximum concurrent sessions per connection
+MaxSessions 10
+
+# Maximum open connections awaiting authentication
+MaxStartups 10:30:100
+
+# Client keepalive settings
+ClientAliveInterval 30
+ClientAliveCountMax 3
+
+# TCP keepalive
+TCPKeepAlive yes
+
+# =============================================================================
+# Logging
+# =============================================================================
+SyslogFacility AUTH
+LogLevel INFO
+
+# =============================================================================
+# User/Group Restrictions
+# =============================================================================
+# Only allow the 'oxidized' user to connect
+AllowUsers oxidized
+
+# Alternatively, restrict by group:
+# AllowGroups oxidized
+
+# =============================================================================
+# Subsystems
+# =============================================================================
+# SFTP for file transfers
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# =============================================================================
+# Banner (optional)
+# =============================================================================
+# Display a banner before authentication
+# Banner /etc/ssh/banner.txt
+
+# =============================================================================
+# Environment
+# =============================================================================
+# Allow specific environment variables to be passed
+AcceptEnv LANG LC_*
+
+# =============================================================================
+# Performance
+# =============================================================================
+# Use privilege separation
+UsePrivilegeSeparation sandbox
+
+# Compression (disable for performance, enable for slow connections)
+Compression delayed
+
+# =============================================================================
+# Ciphers and MACs (secure defaults)
+# =============================================================================
+# Modern, secure ciphers only
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+
+# Secure MACs
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+
+# Key exchange algorithms
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256

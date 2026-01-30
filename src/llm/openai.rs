@@ -1,19 +1,35 @@
 use crate::llm::provider::LLMAdapter;
-use crate::types::{AppResult, LLMRequest, LLMResponse, TokenUsage, MessageContent, ContentPart};
+use crate::types::{AppResult, AppError, LLMRequest, LLMResponse, TokenUsage, MessageContent, ContentPart};
 use async_trait::async_trait;
-use async_openai::Client;
-use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart, ImageUrl, ImageDetail,
+use async_openai::{
+    Client,
+    config::OpenAIConfig,
+    types::{
+        CreateChatCompletionRequestArgs,
+        ChatCompletionRequestMessage,
+        ChatCompletionRequestSystemMessage,
+        ChatCompletionRequestSystemMessageContent,
+        ChatCompletionRequestUserMessage,
+        ChatCompletionRequestUserMessageContent,
+        ChatCompletionRequestUserMessageContentPart,
+        ChatCompletionRequestAssistantMessage,
+        ChatCompletionRequestAssistantMessageContent,
+        ChatCompletionRequestMessageContentPartText,
+        ChatCompletionRequestMessageContentPartImage,
+        ImageUrl,
+        ImageDetail,
+    },
 };
 
 pub struct OpenAIAdapter {
-    client: Client,
+    client: Client<OpenAIConfig>,
 }
 
 impl OpenAIAdapter {
     pub fn new(api_key: &str) -> Self {
-        let client = Client::new(api_key);
+        // Create config with the provided API key
+        let config = OpenAIConfig::new().with_api_key(api_key);
+        let client = Client::with_config(config);
         Self { client }
     }
 
@@ -21,29 +37,41 @@ impl OpenAIAdapter {
     fn convert_content_part(part: &ContentPart) -> ChatCompletionRequestUserMessageContentPart {
         match part {
             ContentPart::Text { text } => {
-                ChatCompletionRequestUserMessageContentPart::Text(text.clone())
+                ChatCompletionRequestUserMessageContentPart::Text(
+                    ChatCompletionRequestMessageContentPartText {
+                        text: text.clone(),
+                    }
+                )
             }
             ContentPart::ImageUrl { url, detail } => {
-                ChatCompletionRequestUserMessageContentPart::ImageUrl(ImageUrl {
-                    url: url.clone(),
-                    detail: detail.as_ref().map(|d| match d.as_str() {
-                        "low" => ImageDetail::Low,
-                        "high" => ImageDetail::High,
-                        _ => ImageDetail::Auto,
-                    }),
-                })
+                ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                    ChatCompletionRequestMessageContentPartImage {
+                        image_url: ImageUrl {
+                            url: url.clone(),
+                            detail: detail.as_ref().map(|d| match d.as_str() {
+                                "low" => ImageDetail::Low,
+                                "high" => ImageDetail::High,
+                                _ => ImageDetail::Auto,
+                            }),
+                        },
+                    }
+                )
             }
             ContentPart::ImageBase64 { base64, media_type, detail } => {
                 // Convert to data URL format for OpenAI
                 let data_url = format!("data:{};base64,{}", media_type, base64);
-                ChatCompletionRequestUserMessageContentPart::ImageUrl(ImageUrl {
-                    url: data_url,
-                    detail: detail.as_ref().map(|d| match d.as_str() {
-                        "low" => ImageDetail::Low,
-                        "high" => ImageDetail::High,
-                        _ => ImageDetail::Auto,
-                    }),
-                })
+                ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                    ChatCompletionRequestMessageContentPartImage {
+                        image_url: ImageUrl {
+                            url: data_url,
+                            detail: detail.as_ref().map(|d| match d.as_str() {
+                                "low" => ImageDetail::Low,
+                                "high" => ImageDetail::High,
+                                _ => ImageDetail::Auto,
+                            }),
+                        },
+                    }
+                )
             }
         }
     }
@@ -90,45 +118,81 @@ impl LLMAdapter for OpenAIAdapter {
             .messages
             .iter()
             .map(|m| match m.role.as_str() {
-                "user" => ChatCompletionRequestMessage::User {
-                    content: Self::convert_user_content(&m.content),
-                    name: None,
-                },
-                "assistant" => ChatCompletionRequestMessage::Assistant {
-                    content: Some(Self::get_text_content(&m.content)),
-                    name: None,
-                    tool_calls: None,
-                },
-                "system" => ChatCompletionRequestMessage::System {
-                    content: Self::get_text_content(&m.content),
-                    name: None,
-                },
+                "user" => ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage {
+                        content: Self::convert_user_content(&m.content),
+                        name: None,
+                    }
+                ),
+                "assistant" => ChatCompletionRequestMessage::Assistant(
+                    ChatCompletionRequestAssistantMessage {
+                        content: Some(ChatCompletionRequestAssistantMessageContent::Text(
+                            Self::get_text_content(&m.content)
+                        )),
+                        name: None,
+                        tool_calls: None,
+                        refusal: None,
+                        function_call: None,
+                    }
+                ),
+                "system" => ChatCompletionRequestMessage::System(
+                    ChatCompletionRequestSystemMessage {
+                        content: ChatCompletionRequestSystemMessageContent::Text(
+                            Self::get_text_content(&m.content)
+                        ),
+                        name: None,
+                    }
+                ),
                 _ => panic!("Unknown message role: {}", m.role),
             })
             .collect();
 
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+        request_builder
+            .model(&request.model)
+            .messages(messages);
+
+        if let Some(max_tokens) = request.max_tokens {
+            request_builder.max_tokens(max_tokens);
+        }
+
+        if let Some(temperature) = request.temperature {
+            request_builder.temperature(temperature);
+        }
+
+        let openai_request = request_builder
+            .build()
+            .map_err(|e| AppError::LLMApi(format!("Failed to build request: {}", e)))?;
+
         let response = self
             .client
             .chat()
-            .create(&async_openai::types::ChatCompletionRequestArgs::default()
-                .model(&async_openai::types::ChatCompletionModel::from_string(&request.model)?)
-                .messages(messages)
-                .max_tokens(request.max_tokens)
-                .temperature(request.temperature)
-                .build()?
-            )
-            .await?;
+            .create(openai_request)
+            .await
+            .map_err(|e| AppError::LLMApi(format!("OpenAI API error: {}", e)))?;
 
-        let content = response.choices[0].message.content.clone().unwrap_or_default();
-        let usage = TokenUsage {
-            prompt_tokens: response.usage.prompt_tokens as u32,
-            completion_tokens: response.usage.completion_tokens as u32,
-            total_tokens: response.usage.total_tokens as u32,
-        };
+        let content = response.choices.get(0)
+            .and_then(|c| c.message.content.clone())
+            .unwrap_or_default();
+
+        let usage = response.usage.map(|u| TokenUsage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        }).unwrap_or(TokenUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        });
+
+        let finish_reason = response.choices.get(0)
+            .and_then(|c| c.finish_reason.as_ref())
+            .map(|r| format!("{:?}", r))
+            .unwrap_or_else(|| "unknown".to_string());
 
         Ok(LLMResponse {
             content,
-            finish_reason: response.choices[0].finish_reason.to_string(),
+            finish_reason,
             usage,
         })
     }

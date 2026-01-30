@@ -1,6 +1,5 @@
 use sqlx::PgPool;
 use crate::config::Config;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -9,8 +8,9 @@ pub struct AppState {
 }
 
 // Core models based on TypeScript definitions
+// Note: FromRow is needed for runtime query_as (without DATABASE_URL at compile time)
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct User {
     pub id: uuid::Uuid,
     pub username: String,
@@ -19,7 +19,7 @@ pub struct User {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct Message {
     pub id: Option<uuid::Uuid>,
     pub conversation_id: uuid::Uuid,
@@ -32,7 +32,7 @@ pub struct Message {
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct Conversation {
     pub id: uuid::Uuid,
     pub user_id: uuid::Uuid,

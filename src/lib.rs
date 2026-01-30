@@ -13,16 +13,13 @@ pub mod middleware;
 pub mod queue;
 pub mod payment;
 pub mod utils;
-
-use std::sync::Arc;
-use sqlx::PgPool;
-use config::Config;
-use models::AppState;
+pub mod rfc;  // Remote Function Call system for Docker container access
 
 // Re-exports for convenience
 pub use config::Config;
 pub use models::AppState;
-pub use types::*;
+// Note: Import specific items from types module instead of glob to avoid name conflicts
+// e.g., use oxidized_bio::types::{LLMRequest, LLMResponse, AppResult};
 
 pub fn create_router(state: AppState) -> axum::Router {
     routes::create_router(state)

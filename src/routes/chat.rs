@@ -2,15 +2,14 @@ use axum::{
     Router,
     routing::{get, post},
     Json,
-    extract::{State, Path},
+    extract::State,
     response::Json as ResponseJson,
 };
 use crate::models::{AppState, ChatRequest, ChatResponse};
 use uuid::Uuid;
-use chrono::Utc;
-use tracing::{info, error};
+use tracing::info;
 
-pub fn router(state: AppState) -> Router<AppState> {
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/chat", get(get_chat))
         .route("/api/chat", post(post_chat))

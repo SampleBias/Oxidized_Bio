@@ -9,7 +9,7 @@ pub async fn with_retry<F, T, E>(
     max_retries: u32,
 ) -> Result<T, E>
 where
-    F: FnMut() -> futures::future::BoxFuture<'_, Result<T, E>>,
+    F: FnMut() -> futures::future::BoxFuture<'static, Result<T, E>>,
     E: std::fmt::Display,
 {
     let mut attempt = 0;
