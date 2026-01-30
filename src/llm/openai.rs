@@ -113,6 +113,7 @@ impl OpenAIAdapter {
 
 #[async_trait]
 impl LLMAdapter for OpenAIAdapter {
+    #[allow(deprecated)]
     async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
         let messages: Vec<ChatCompletionRequestMessage> = request
             .messages

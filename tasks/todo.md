@@ -49,7 +49,8 @@
 - ✅ Docker build completes successfully
 - ✅ Docker image created: `oxidized-bio:latest` (463MB disk, 119MB content)
 - ✅ All 22 Docker build stages completed
-- ⚠️ 55 warnings remain (mostly unused variables/imports, non-blocking)
+- ⚠️ 55 warnings remain (mostly unused variables/imports, 1 deprecation warning - all non-blocking)
+- 🔑 Key learning: `--no-cache` flag required when source code changes
 
 **Files Modified**:
 - `src/llm/mod.rs` - Fixed import statement
