@@ -1,6 +1,7 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+-- pgvector extension is named 'vector' in the pg_extensions catalog
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Drop existing tables (cascade to handle foreign keys)
 DROP TABLE IF EXISTS x402_external CASCADE;
