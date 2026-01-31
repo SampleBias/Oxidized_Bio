@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import Router, { route } from 'preact-router';
 import { CDPProvider } from './providers/CDPProvider';
 import { AuthProvider } from './contexts';
-import { LoginPage, ChatPage } from './pages';
+import { LoginPage, ChatPage, SettingsPage } from './pages';
 import { useAuth } from './hooks';
 import './styles/global.css';
 
@@ -70,6 +70,7 @@ function AppShell() {
     <Router onChange={handleRouteChange}>
       <LoginPage path="/login" />
       <ChatPage path="/chat/:sessionId?" />
+      <SettingsPage path="/settings" />
       <Redirect path="/" to="/chat" />
       <NotFound default />
     </Router>

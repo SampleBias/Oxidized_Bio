@@ -17,8 +17,8 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build Environment
 # -----------------------------------------------------------------------------
-# Using latest Rust for edition 2024 support (required by some dependencies)
-FROM rust:latest AS builder
+# Using rust:bookworm to match runtime glibc version (debian:bookworm-slim)
+FROM rust:bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

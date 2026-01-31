@@ -13,7 +13,9 @@ pub mod middleware;
 pub mod queue;
 pub mod payment;
 pub mod utils;
-pub mod rfc;  // Remote Function Call system for Docker container access
+pub mod rfc;       // Remote Function Call system for Docker container access
+pub mod settings;  // User settings and API key management
+pub mod tui;       // Terminal User Interface
 
 // Re-exports for convenience
 pub use config::Config;

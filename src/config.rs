@@ -87,8 +87,10 @@ impl Config {
                     .collect(),
             },
             database: DatabaseConfig {
+                // DATABASE_URL is optional - the app can run without a database
+                // (e.g., TUI mode, or server mode with just API key validation)
                 url: env::var("DATABASE_URL")
-                    .expect("DATABASE_URL must be set"),
+                    .unwrap_or_else(|_| String::new()),
                 max_connections: env::var("DB_MAX_CONNECTIONS")
                     .unwrap_or_else(|_| "10".to_string())
                     .parse()?,
@@ -118,8 +120,16 @@ impl Config {
                 s3_endpoint: env::var("S3_ENDPOINT").ok(),
             },
             auth: AuthConfig {
+                // BIOAGENTS_SECRET is optional - defaults to a random value if not set
+                // For production, this should always be explicitly set
                 secret: env::var("BIOAGENTS_SECRET")
-                    .expect("BIOAGENTS_SECRET must be set"),
+                    .unwrap_or_else(|_| {
+                        // Generate a random secret for dev/local use
+                        use std::collections::hash_map::RandomState;
+                        use std::hash::{BuildHasher, Hasher};
+                        let random = RandomState::new().build_hasher().finish();
+                        format!("dev-secret-{:016x}", random)
+                    }),
                 mode: env::var("AUTH_MODE").unwrap_or_else(|_| "none".to_string()),
                 max_jwt_expiration: env::var("MAX_JWT_EXPIRATION")
                     .unwrap_or_else(|_| "3600".to_string())

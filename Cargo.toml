@@ -13,7 +13,7 @@ categories = ["science", "web-programming", "api-bindings"]
 # Web framework
 axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
 tower = { version = "0.5", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 tokio = { version = "1", features = ["full"] }
 hyper = { version = "1", features = ["full"] }
 
@@ -94,6 +94,17 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
 hostname = "0.4"
+
+# Settings encryption
+aes-gcm = "0.10"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# TUI Framework
+ratatui = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tui-textarea = "0.6"
 
 [dev-dependencies]
 tokio-test = "0.4"

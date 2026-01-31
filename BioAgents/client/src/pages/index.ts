@@ -5,3 +5,4 @@
 
 export { LoginPage } from './LoginPage';
 export { ChatPage } from './ChatPage';
+export { SettingsPage } from './SettingsPage';

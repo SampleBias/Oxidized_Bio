@@ -149,12 +149,29 @@ pub struct FileUpload {
     pub data: Vec<u8>,
 }
 
+/// Chat response format matching frontend expectations
+/// Frontend useChatAPI.ts expects: { text: string, userId?: string }
 #[derive(Debug, serde::Serialize)]
 pub struct ChatResponse {
-    pub message_id: uuid::Uuid,
-    pub content: String,
-    pub conversation_id: uuid::Uuid,
-    pub response_time: i32,
+    /// The response text - this is the main content the frontend displays
+    pub text: String,
+    /// Optional user ID for x402 users to know their identity
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<uuid::Uuid>,
+    /// Message ID for deduplication with WebSocket
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<uuid::Uuid>,
+    /// Files included in the response (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<FileInfo>>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct FileInfo {
+    pub filename: String,
+    pub mime_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
