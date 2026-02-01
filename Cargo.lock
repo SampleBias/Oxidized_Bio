@@ -3766,6 +3766,7 @@ dependencies = [
  "crossterm",
  "csv",
  "deadpool-postgres",
+ "dirs",
  "docx-rust",
  "dotenvy",
  "ethers",

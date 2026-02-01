@@ -86,6 +86,7 @@ validator = { version = "0.19", features = ["derive"] }
 bytes = "1"
 mime = "0.3"
 mime_guess = "2"
+dirs = "5"
 
 # RFC (Remote Function Call) - Cryptography
 rsa = { version = "0.9", features = ["sha2"] }

@@ -118,11 +118,13 @@ impl LiteratureAgent {
                     }
                     Err(e) => {
                         warn!(error = %e, "Failed to parse literature response, extracting text");
-                        // Fall back to treating the entire response as findings
+                        // Fall back to extracting clean text from the response
+                        // This sanitizes any raw JSON to prevent it from being displayed
+                        let sanitized_findings = Self::extract_text_from_response(&response.content);
                         Ok(LiteratureResult {
                             task_id,
                             objective: task.objective.clone(),
-                            findings: response.content,
+                            findings: sanitized_findings,
                             sources: vec![],
                             key_insights: vec![],
                         })
@@ -238,6 +240,152 @@ IMPORTANT:
             sources,
             key_insights: parsed.key_insights,
         })
+    }
+
+    /// Extract clean text from a raw LLM response that may contain JSON.
+    /// This is used as a fallback when JSON parsing fails.
+    fn extract_text_from_response(response: &str) -> String {
+        // If the response looks like JSON, try to extract the "findings" field
+        if response.trim().starts_with('{') {
+            // Try to extract just the findings field from malformed JSON
+            if let Some(findings_start) = response.find("\"findings\"") {
+                // Find the value after "findings":
+                if let Some(colon_pos) = response[findings_start..].find(':') {
+                    let value_start = findings_start + colon_pos + 1;
+                    let rest = &response[value_start..].trim_start();
+                    
+                    // If it starts with a quote, extract the string value
+                    if rest.starts_with('"') {
+                        // Find the end of the string (accounting for escaped quotes)
+                        let mut chars = rest[1..].chars().peekable();
+                        let mut result = String::new();
+                        let mut escaped = false;
+                        
+                        for c in chars {
+                            if escaped {
+                                result.push(c);
+                                escaped = false;
+                            } else if c == '\\' {
+                                escaped = true;
+                            } else if c == '"' {
+                                break;
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        
+                        if !result.is_empty() {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Remove JSON code blocks if present
+        let cleaned = if response.contains("```json") {
+            // Try to extract text outside of JSON blocks
+            let parts: Vec<&str> = response.split("```json").collect();
+            let mut text_parts = Vec::new();
+            
+            for (i, part) in parts.iter().enumerate() {
+                if i == 0 {
+                    // Text before the first JSON block
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        text_parts.push(trimmed);
+                    }
+                } else if let Some(end_pos) = part.find("```") {
+                    // Text after the JSON block
+                    let after_json = &part[end_pos + 3..].trim();
+                    if !after_json.is_empty() {
+                        text_parts.push(*after_json);
+                    }
+                }
+            }
+            
+            if !text_parts.is_empty() {
+                text_parts.join("\n\n")
+            } else {
+                // No text found outside JSON, return a sanitized version
+                Self::sanitize_json_for_display(response)
+            }
+        } else if response.contains("```") {
+            // Generic code block removal
+            let parts: Vec<&str> = response.split("```").collect();
+            let text_parts: Vec<&str> = parts
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| i % 2 == 0) // Only parts outside code blocks
+                .map(|(_, s)| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            if !text_parts.is_empty() {
+                text_parts.join("\n\n")
+            } else {
+                Self::sanitize_json_for_display(response)
+            }
+        } else if response.trim().starts_with('{') || response.trim().starts_with('[') {
+            // Raw JSON without code blocks
+            Self::sanitize_json_for_display(response)
+        } else {
+            // Plain text response
+            response.trim().to_string()
+        };
+        
+        cleaned
+    }
+    
+    /// Sanitize JSON for display by converting it to a readable summary
+    fn sanitize_json_for_display(json_str: &str) -> String {
+        // Try to pretty-format the JSON to make it more readable
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
+            // Extract useful text content from the JSON structure
+            let mut text_parts = Vec::new();
+            Self::extract_text_values(&value, &mut text_parts);
+            
+            if !text_parts.is_empty() {
+                return text_parts.join("\n\n");
+            }
+        }
+        
+        // If JSON parsing fails, return a generic message
+        "Research findings are available but could not be properly formatted. Please try rephrasing your query.".to_string()
+    }
+    
+    /// Recursively extract text values from a JSON structure
+    fn extract_text_values(value: &serde_json::Value, parts: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(s) => {
+                let trimmed = s.trim();
+                // Only include substantial text (not just labels or IDs)
+                if trimmed.len() > 20 && !trimmed.starts_with("http") {
+                    parts.push(trimmed.to_string());
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for item in arr {
+                    Self::extract_text_values(item, parts);
+                }
+            }
+            serde_json::Value::Object(obj) => {
+                // Prioritize certain keys for extraction
+                let priority_keys = ["findings", "summary", "content", "text", "description"];
+                for key in priority_keys {
+                    if let Some(val) = obj.get(key) {
+                        Self::extract_text_values(val, parts);
+                    }
+                }
+                // Then extract from other keys
+                for (key, val) in obj {
+                    if !priority_keys.contains(&key.as_str()) {
+                        Self::extract_text_values(val, parts);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Format literature results for inclusion in reply context
