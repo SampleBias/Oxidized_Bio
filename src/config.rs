@@ -50,7 +50,8 @@ impl LLMConfig {
             "openai" => &self.openai_api_key,
             "anthropic" => &self.anthropic_api_key,
             "google" => &self.google_api_key,
-            "glm" => &self.glm_api_key,
+            // Both "glm" (General API) and "glm-coding" (Coding API) use the same API key
+            "glm" | "glm-general" | "glm-coding" => &self.glm_api_key,
             "openrouter" => &self.openrouter_api_key,
             _ => "",
         };

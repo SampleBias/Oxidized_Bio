@@ -557,6 +557,7 @@ impl App {
 
     /// Update config from settings
     fn update_config_from_settings(&mut self) {
+        // Update API keys
         self.config.llm.openai_api_key =
             self.settings.openai.api_key.clone().unwrap_or_default();
         self.config.llm.anthropic_api_key =
@@ -566,7 +567,25 @@ impl App {
         self.config.llm.glm_api_key = self.settings.glm.api_key.clone().unwrap_or_default();
         self.config.llm.openrouter_api_key =
             self.settings.openrouter.api_key.clone().unwrap_or_default();
+        
+        // Update provider
         self.config.llm.default_provider = self.settings.default_provider.to_string();
+        
+        // Update model based on selected provider's default model
+        // This is CRITICAL - without this, the model stays as "gpt-4" which other providers don't recognize
+        use crate::settings::Provider;
+        self.config.llm.default_model = match self.settings.default_provider {
+            Provider::OpenAI => self.settings.openai.default_model.clone()
+                .unwrap_or_else(|| "gpt-4o".to_string()),
+            Provider::Anthropic => self.settings.anthropic.default_model.clone()
+                .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string()),
+            Provider::Google => self.settings.google.default_model.clone()
+                .unwrap_or_else(|| "gemini-2.0-flash".to_string()),
+            Provider::OpenRouter => self.settings.openrouter.default_model.clone()
+                .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
+            Provider::GLM => self.settings.glm.default_model.clone()
+                .unwrap_or_else(|| "glm-4.7".to_string()),
+        };
     }
 
     /// Scroll to bottom of messages
