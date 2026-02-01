@@ -2,6 +2,12 @@
 // Supports GLM-4.7 series (text) and GLM-4.6V series (vision/multimodal)
 // Documentation: https://docs.z.ai/guides/overview/quick-start
 // API Reference: https://docs.z.ai/api-reference/llm/chat-completion
+//
+// IMPORTANT: There are TWO different API endpoints:
+// 1. Coding API (requires GLM Coding Plan subscription): https://api.z.ai/api/coding/paas/v4
+//    - Use for coding scenarios with GLM-4.7 in tools like Claude Code, Cline, Roo Code, etc.
+// 2. General API: https://api.z.ai/api/paas/v4
+//    - Use for general API scenarios, vision models, and non-coding tasks
 
 use crate::llm::provider::LLMAdapter;
 use crate::types::{AppError, AppResult, LLMRequest, LLMResponse, TokenUsage, MessageContent};
@@ -9,12 +15,15 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-// All GLM models use the same API endpoint (verified from official docs)
-const GLM_API_BASE: &str = "https://api.z.ai/api/paas/v4";
+// GLM Coding Plan endpoint (for coding scenarios - requires subscription)
+const GLM_CODING_API_BASE: &str = "https://api.z.ai/api/coding/paas/v4";
+// General API endpoint (for general use, vision models, etc.)
+const GLM_GENERAL_API_BASE: &str = "https://api.z.ai/api/paas/v4";
 
 pub struct GLMAdapter {
     client: Client,
     api_key: String,
+    use_coding_api: bool,
 }
 
 // Request types for GLM API
