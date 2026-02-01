@@ -24,8 +24,8 @@ impl LLM {
             "anthropic" => Box::new(crate::llm::anthropic::AnthropicAdapter::new(&provider.api_key)),
             "google" => Box::new(crate::llm::google::GoogleAdapter::new(&provider.api_key)),
             "openrouter" => Box::new(crate::llm::openrouter::OpenRouterAdapter::new(&provider.api_key)),
-            "glm" => Box::new(crate::llm::glm::GLMAdapter::new(&provider.api_key)),
-            "glm-general" => Box::new(crate::llm::glm::GLMAdapter::with_general_api(&provider.api_key)),
+            // All GLM models (text and vision) use the same API endpoint
+            "glm" | "glm-general" => Box::new(crate::llm::glm::GLMAdapter::new(&provider.api_key)),
             _ => panic!("Unsupported provider: {}", provider.name),
         };
 

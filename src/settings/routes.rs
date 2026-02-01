@@ -244,16 +244,23 @@ async fn list_providers() -> impl IntoResponse {
         },
         ProviderInfo {
             id: "glm".to_string(),
-            name: "GLM (Zhipu AI)".to_string(),
-            description: "GLM-4.7 for coding, GLM-4.6/4.5 for general use".to_string(),
+            name: "GLM (Zhipu AI / Z.AI)".to_string(),
+            description: "GLM-4.7 (flagship text), GLM-4.6V (vision/multimodal)".to_string(),
             models: vec![
-                ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Coding)".to_string(), context_length: Some(128000), supports_vision: Some(false) },
+                // GLM-4.7 Series - Text models (200K context, 128K output)
+                ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Flagship)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+                ModelInfo { id: "glm-4.7-flashx".to_string(), name: "GLM-4.7-FlashX (Fast)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+                ModelInfo { id: "glm-4.7-flash".to_string(), name: "GLM-4.7-Flash (Free)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+                // GLM-4.6V Series - Vision/Multimodal models (128K context)
+                ModelInfo { id: "glm-4.6v".to_string(), name: "GLM-4.6V (Vision Flagship)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
+                ModelInfo { id: "glm-4.6v-flashx".to_string(), name: "GLM-4.6V-FlashX (Vision Fast)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
+                ModelInfo { id: "glm-4.6v-flash".to_string(), name: "GLM-4.6V-Flash (Vision Free)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
+                // Previous generation models
                 ModelInfo { id: "glm-4.6".to_string(), name: "GLM-4.6".to_string(), context_length: Some(128000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.6v".to_string(), name: "GLM-4.6V (Vision)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
-                ModelInfo { id: "glm-4.5".to_string(), name: "GLM-4.5".to_string(), context_length: Some(128000), supports_vision: Some(false) },
+                ModelInfo { id: "glm-4.5".to_string(), name: "GLM-4.5 (Open Source)".to_string(), context_length: Some(128000), supports_vision: Some(false) },
                 ModelInfo { id: "glm-4.5v".to_string(), name: "GLM-4.5V (Vision)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
             ],
-            docs_url: Some("https://docs.z.ai".to_string()),
+            docs_url: Some("https://docs.z.ai/guides/overview/quick-start".to_string()),
         },
         ProviderInfo {
             id: "openrouter".to_string(),

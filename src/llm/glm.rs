@@ -1,6 +1,7 @@
 // GLM (Zhipu AI) adapter implementation
-// Supports GLM-4.7 (coding), GLM-4.6, GLM-4.5, and vision models (GLM-4.6V, GLM-4.5V)
-// Documentation: https://docs.z.ai
+// Supports GLM-4.7 series (text) and GLM-4.6V series (vision/multimodal)
+// Documentation: https://docs.z.ai/guides/overview/quick-start
+// API Reference: https://docs.z.ai/api-reference/llm/chat-completion
 
 use crate::llm::provider::LLMAdapter;
 use crate::types::{AppError, AppResult, LLMRequest, LLMResponse, TokenUsage, MessageContent};
@@ -8,13 +9,12 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-const GLM_CODING_API_BASE: &str = "https://api.z.ai/api/coding/paas/v4";
-const GLM_GENERAL_API_BASE: &str = "https://api.z.ai/api/paas/v4";
+// All GLM models use the same API endpoint (verified from official docs)
+const GLM_API_BASE: &str = "https://api.z.ai/api/paas/v4";
 
 pub struct GLMAdapter {
     client: Client,
     api_key: String,
-    use_coding_api: bool,
 }
 
 // Request types for GLM API
@@ -109,46 +109,37 @@ struct GLMError {
 }
 
 impl GLMAdapter {
-    /// Create a new GLM adapter using the Coding API (recommended for GLM-4.7)
+    /// Create a new GLM adapter
+    /// All GLM models (text and vision) use the same API endpoint
     pub fn new(api_key: &str) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.to_string(),
-            use_coding_api: true,
         }
     }
 
-    /// Create a GLM adapter using the General API (for non-coding models, vision models, etc.)
+    /// Alias for new() - kept for backwards compatibility
+    #[deprecated(note = "All GLM models use the same API endpoint. Use new() instead.")]
     pub fn with_general_api(api_key: &str) -> Self {
-        Self {
-            client: Client::new(),
-            api_key: api_key.to_string(),
-            use_coding_api: false,
-        }
+        Self::new(api_key)
     }
 
-    /// Create a GLM adapter with explicit API selection
-    pub fn with_api_type(api_key: &str, use_coding_api: bool) -> Self {
-        Self {
-            client: Client::new(),
-            api_key: api_key.to_string(),
-            use_coding_api,
-        }
-    }
-
-    fn base_url(&self) -> &str {
-        if self.use_coding_api {
-            GLM_CODING_API_BASE
-        } else {
-            GLM_GENERAL_API_BASE
-        }
+    /// Alias for new() - kept for backwards compatibility
+    #[deprecated(note = "All GLM models use the same API endpoint. Use new() instead.")]
+    pub fn with_api_type(api_key: &str, _use_coding_api: bool) -> Self {
+        Self::new(api_key)
     }
 
     /// Check if a model is a vision model (requires multimodal content format)
+    /// Vision models: glm-4.6v, glm-4.6v-flashx, glm-4.6v-flash, glm-4.5v, autoglm-*
     fn is_vision_model(model: &str) -> bool {
         let model_lower = model.to_lowercase();
-        model_lower.contains("4v") || 
-        model_lower.contains("-v") || 
+        // GLM vision models have "v" suffix (e.g., glm-4.6v, glm-4.5v)
+        // or are AutoGLM models (phone/multilingual)
+        model_lower.contains(".6v") || 
+        model_lower.contains(".5v") || 
+        model_lower.contains("-v-") ||
+        model_lower.ends_with("v") ||
         model_lower.contains("vision") ||
         model_lower.contains("autoglm")
     }
@@ -198,7 +189,7 @@ impl GLMAdapter {
 #[async_trait]
 impl LLMAdapter for GLMAdapter {
     async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
-        let url = format!("{}/chat/completions", self.base_url());
+        let url = format!("{}/chat/completions", GLM_API_BASE);
 
         let messages: Vec<GLMMessage> = request
             .messages
@@ -279,22 +270,46 @@ impl LLMAdapter for GLMAdapter {
     }
 }
 
-/// Available GLM models
+/// Available GLM models (verified from official docs: https://docs.z.ai)
+/// All models use the same API endpoint: https://api.z.ai/api/paas/v4
 pub mod models {
-    // Text models (Coding API)
+    // === GLM-4.7 Series (Latest flagship text models) ===
+    /// GLM-4.7 - Flagship model with highest performance (200K context, 128K output)
     pub const GLM_4_7: &str = "glm-4.7";
+    /// GLM-4.7-FlashX - Lightweight, high-speed, affordable (200K context, 128K output)
+    pub const GLM_4_7_FLASHX: &str = "glm-4.7-flashx";
+    /// GLM-4.7-Flash - Lightweight, completely free (200K context, 128K output)
+    pub const GLM_4_7_FLASH: &str = "glm-4.7-flash";
     
-    // Text models (General API)
+    // === GLM-4.6 Series (Previous generation text models) ===
     pub const GLM_4_6: &str = "glm-4.6";
+    
+    // === GLM-4.5 Series (Open-source models) ===
     pub const GLM_4_5: &str = "glm-4.5";
+    
+    // === Extended Context Models ===
     pub const GLM_4_32B: &str = "glm-4-32b-0414-128k";
     
-    // Vision/Multimodal models (General API)
+    // === GLM-4.6V Series (Vision/Multimodal models - use for computer vision) ===
+    /// GLM-4.6V - Flagship vision model (128K context, supports video/image/text/file)
     pub const GLM_4_6V: &str = "glm-4.6v";
+    /// GLM-4.6V-FlashX - Lightweight vision model, high-speed, affordable
+    pub const GLM_4_6V_FLASHX: &str = "glm-4.6v-flashx";
+    /// GLM-4.6V-Flash - Lightweight vision model, completely free
+    pub const GLM_4_6V_FLASH: &str = "glm-4.6v-flash";
+    
+    // === GLM-4.5V Series (Previous generation vision models) ===
     pub const GLM_4_5V: &str = "glm-4.5v";
     
-    // Specialized models
+    // === Specialized Agent Models ===
+    /// AutoGLM-Phone-Multilingual - For phone/device automation agents
     pub const AUTOGLM_PHONE: &str = "autoglm-phone-multilingual";
+    
+    // === Default model selections ===
+    /// Default text model (GLM-4.7 for best performance)
+    pub const DEFAULT_TEXT: &str = GLM_4_7;
+    /// Default vision model (GLM-4.6V for computer vision tasks)
+    pub const DEFAULT_VISION: &str = GLM_4_6V;
 }
 
 #[cfg(test)]
@@ -303,20 +318,36 @@ mod tests {
 
     #[test]
     fn test_is_vision_model() {
+        // Vision models should be detected
         assert!(GLMAdapter::is_vision_model("glm-4.6v"));
+        assert!(GLMAdapter::is_vision_model("glm-4.6v-flashx"));
+        assert!(GLMAdapter::is_vision_model("glm-4.6v-flash"));
         assert!(GLMAdapter::is_vision_model("glm-4.5v"));
-        assert!(GLMAdapter::is_vision_model("GLM-4V"));
-        assert!(GLMAdapter::is_vision_model("autoglm-phone"));
+        assert!(GLMAdapter::is_vision_model("GLM-4.6V"));
+        assert!(GLMAdapter::is_vision_model("autoglm-phone-multilingual"));
+        
+        // Text models should NOT be detected as vision
         assert!(!GLMAdapter::is_vision_model("glm-4.7"));
+        assert!(!GLMAdapter::is_vision_model("glm-4.7-flash"));
         assert!(!GLMAdapter::is_vision_model("glm-4.6"));
+        assert!(!GLMAdapter::is_vision_model("glm-4.5"));
     }
 
     #[test]
-    fn test_base_url_selection() {
-        let coding_adapter = GLMAdapter::new("test-key");
-        assert_eq!(coding_adapter.base_url(), GLM_CODING_API_BASE);
-
-        let general_adapter = GLMAdapter::with_general_api("test-key");
-        assert_eq!(general_adapter.base_url(), GLM_GENERAL_API_BASE);
+    fn test_api_endpoint() {
+        // All adapters should use the same API endpoint
+        assert_eq!(GLM_API_BASE, "https://api.z.ai/api/paas/v4");
+    }
+    
+    #[test]
+    fn test_model_constants() {
+        // Verify model names match official documentation
+        assert_eq!(models::GLM_4_7, "glm-4.7");
+        assert_eq!(models::GLM_4_7_FLASHX, "glm-4.7-flashx");
+        assert_eq!(models::GLM_4_7_FLASH, "glm-4.7-flash");
+        assert_eq!(models::GLM_4_6V, "glm-4.6v");
+        assert_eq!(models::GLM_4_6V_FLASHX, "glm-4.6v-flashx");
+        assert_eq!(models::DEFAULT_TEXT, "glm-4.7");
+        assert_eq!(models::DEFAULT_VISION, "glm-4.6v");
     }
 }
