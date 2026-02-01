@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use async_openai::{
     Client,
     config::OpenAIConfig,
-    types::{
+    types::chat::{
         CreateChatCompletionRequestArgs,
         ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage,

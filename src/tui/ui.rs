@@ -77,6 +77,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
 
     // Build message lines
     let mut lines: Vec<Line> = Vec::new();
+    let available_width = inner_area.width.saturating_sub(2) as usize; // Leave room for indent
 
     for msg in &app.messages {
         // Role prefix
@@ -90,12 +91,47 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(format!("{}: ", prefix), style),
         ]));
 
-        // Message content
+        // Message content - wrap text to fit viewport
         for line in msg.content.lines() {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(line, Theme::text()),
-            ]));
+            if line.is_empty() {
+                lines.push(Line::from("  "));
+            } else {
+                // Manually wrap long lines to prevent overflow
+                let indent = "  ";
+                let max_line_width = available_width.saturating_sub(indent.len());
+                
+                if line.len() <= max_line_width {
+                    // Line fits, add as-is
+                    lines.push(Line::from(vec![
+                        Span::raw(indent),
+                        Span::styled(line, Theme::text()),
+                    ]));
+                } else {
+                    // Line is too long, wrap it
+                    let mut remaining = line;
+                    while !remaining.is_empty() {
+                        if remaining.len() <= max_line_width {
+                            lines.push(Line::from(vec![
+                                Span::raw(indent),
+                                Span::styled(remaining, Theme::text()),
+                            ]));
+                            break;
+                        } else {
+                            // Find a good breaking point (space, comma, etc.)
+                            let break_point = remaining[..max_line_width]
+                                .rfind(|c: char| c.is_whitespace() || c == ',' || c == '.' || c == ';')
+                                .unwrap_or(max_line_width);
+                            
+                            let (chunk, rest) = remaining.split_at(break_point);
+                            lines.push(Line::from(vec![
+                                Span::raw(indent),
+                                Span::styled(chunk, Theme::text()),
+                            ]));
+                            remaining = rest.trim_start();
+                        }
+                    }
+                }
+            }
         }
 
         lines.push(Line::from("")); // Spacing
@@ -111,7 +147,6 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
 
     // Create paragraph with scroll
     let paragraph = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
         .scroll((app.scroll_offset, 0));
 
     frame.render_widget(paragraph, inner_area);
