@@ -586,4 +586,30 @@ impl App {
             self.scroll_offset = self.max_scroll;
         }
     }
+    
+    /// Calculate scroll bounds based on current messages
+    /// Call this before rendering to ensure max_scroll is up to date
+    pub fn calculate_scroll_bounds(&mut self, terminal_height: u16) {
+        // Calculate content height:
+        // Each message has: 1 line for role + content lines + 1 blank line
+        let mut content_height: u16 = 0;
+        
+        for msg in &self.messages {
+            content_height += 1; // Role line
+            content_height += msg.content.lines().count() as u16; // Content lines
+            content_height += 1; // Blank line
+        }
+        
+        // Add typing indicator if generating
+        if matches!(self.pipeline_stage, PipelineStage::Generating) {
+            content_height += 1;
+        }
+        
+        // Calculate viewport height (terminal - header - progress - input - status - borders)
+        // Header: 3, Progress: 4, Input: 4, Status: 1, Borders: ~4
+        let viewport_height = terminal_height.saturating_sub(16);
+        
+        // Update scroll bounds
+        self.update_scroll_bounds(content_height, viewport_height);
+    }
 }

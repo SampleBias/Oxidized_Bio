@@ -97,11 +97,11 @@ async fn run_app(
     events: &mut EventHandler,
 ) -> anyhow::Result<()> {
     loop {
-        // Draw UI and get scroll bounds
-        let (content_height, viewport_height) = terminal.draw(|frame| ui::render(frame, app))?;
+        // Update scroll bounds before drawing
+        app.calculate_scroll_bounds(terminal.size()?.height);
         
-        // Update scroll bounds based on actual content
-        app.update_scroll_bounds(content_height, viewport_height);
+        // Draw UI
+        terminal.draw(|frame| ui::render(frame, app))?;
 
         // Handle async events from research pipeline
         app.poll_events();
