@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
             .join("oxidized-bio")
             .join("logs");
         
-        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        if let Err(_) = std::fs::create_dir_all(&log_dir) {
             // If we can't create log dir, just disable logging entirely for TUI
             // This is better than corrupting the display
             tracing_subscriber::registry()

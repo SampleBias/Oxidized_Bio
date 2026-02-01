@@ -257,7 +257,7 @@ IMPORTANT:
                     // If it starts with a quote, extract the string value
                     if rest.starts_with('"') {
                         // Find the end of the string (accounting for escaped quotes)
-                        let mut chars = rest[1..].chars().peekable();
+                        let chars = rest[1..].chars();
                         let mut result = String::new();
                         let mut escaped = false;
                         
