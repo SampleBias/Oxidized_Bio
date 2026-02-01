@@ -70,7 +70,7 @@ tesseract-rs = "0.1"
 docx-rust = "0.1"
 
 # LLM providers
-async-openai = { version = "0.32", features = ["chat"] }
+async-openai = "0.30"
 # Anthropic and Google will need custom implementations
 
 # Blockchain (Base/BNB Chain for payments)
