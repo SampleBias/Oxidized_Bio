@@ -33,6 +33,14 @@ impl OpenAIAdapter {
         Self { client }
     }
 
+    pub fn new_with_api_base(api_key: &str, api_base: &str) -> Self {
+        let config = OpenAIConfig::new()
+            .with_api_key(api_key)
+            .with_api_base(api_base);
+        let client = Client::with_config(config);
+        Self { client }
+    }
+
     /// Convert internal ContentPart to OpenAI format
     fn convert_content_part(part: &ContentPart) -> ChatCompletionRequestUserMessageContentPart {
         match part {

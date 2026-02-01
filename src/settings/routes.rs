@@ -125,6 +125,18 @@ async fn update_settings(
     if let Some(model) = request.openrouter_model {
         settings.openrouter.default_model = Some(model);
     }
+
+    // Update Groq
+    if let Some(key) = request.groq_key {
+        if key.is_empty() {
+            settings.groq.api_key = None;
+        } else {
+            provided_keys.push(("groq", key));
+        }
+    }
+    if let Some(model) = request.groq_model {
+        settings.groq.default_model = Some(model);
+    }
     
     // Update theme
     if let Some(theme) = request.theme {
@@ -241,6 +253,16 @@ async fn list_providers() -> impl IntoResponse {
             ],
             docs_url: Some("https://openrouter.ai/docs".to_string()),
         },
+        ProviderInfo {
+            id: "groq".to_string(),
+            name: "Groq Cloud".to_string(),
+            description: "OpenAI-compatible API for Groq-hosted models".to_string(),
+            models: vec![
+                ModelInfo { id: "groq/compound".to_string(), name: "Groq Compound".to_string(), context_length: None, supports_vision: None },
+                ModelInfo { id: "groq/compound-mini".to_string(), name: "Groq Compound Mini".to_string(), context_length: None, supports_vision: None },
+            ],
+            docs_url: Some("https://console.groq.com/docs/openai".to_string()),
+        },
     ];
 
     Json(providers)
@@ -281,6 +303,7 @@ async fn test_provider(
         "anthropic" => test_anthropic(&api_key).await,
         "google" => test_google(&api_key).await,
         "openrouter" => test_openrouter(&api_key).await,
+        "groq" => test_groq(&api_key).await,
         _ => Err(format!("Unknown provider: {}", provider)),
     };
 
@@ -375,6 +398,22 @@ async fn test_openrouter(api_key: &str) -> Result<String, String> {
 
     if response.status().is_success() {
         Ok("OpenRouter API key is valid".to_string())
+    } else {
+        Err(format!("API returned error: {}", response.status()))
+    }
+}
+
+async fn test_groq(api_key: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.groq.com/openai/v1/models")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok("Groq API key is valid".to_string())
     } else {
         Err(format!("API returned error: {}", response.status()))
     }

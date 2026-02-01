@@ -24,6 +24,7 @@ impl LLM {
             "anthropic" => Box::new(crate::llm::anthropic::AnthropicAdapter::new(&provider.api_key)),
             "google" => Box::new(crate::llm::google::GoogleAdapter::new(&provider.api_key)),
             "openrouter" => Box::new(crate::llm::openrouter::OpenRouterAdapter::new(&provider.api_key)),
+            "groq" => Box::new(crate::llm::groq::GroqAdapter::new(&provider.api_key)),
             _ => panic!("Unsupported provider: {}", provider.name),
         };
 

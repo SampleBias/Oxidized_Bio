@@ -219,6 +219,16 @@ impl App {
                     .as_ref()
                     .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
             },
+            ProviderField {
+                id: "groq",
+                name: "Groq Cloud",
+                has_key: settings.groq.api_key.is_some(),
+                key_hint: settings
+                    .groq
+                    .api_key
+                    .as_ref()
+                    .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
+            },
         ]
     }
 
@@ -420,7 +430,8 @@ impl App {
         let has_api_key = self.settings.openai.api_key.is_some()
             || self.settings.anthropic.api_key.is_some()
             || self.settings.google.api_key.is_some()
-            || self.settings.openrouter.api_key.is_some();
+            || self.settings.openrouter.api_key.is_some()
+            || self.settings.groq.api_key.is_some();
 
         if !has_api_key {
             self.messages.push(ChatMessage {
@@ -555,6 +566,8 @@ impl App {
             self.settings.google.api_key.clone().unwrap_or_default();
         self.config.llm.openrouter_api_key =
             self.settings.openrouter.api_key.clone().unwrap_or_default();
+        self.config.llm.groq_api_key =
+            self.settings.groq.api_key.clone().unwrap_or_default();
         
         // Update provider
         self.config.llm.default_provider = self.settings.default_provider.to_string();
@@ -571,6 +584,8 @@ impl App {
                 .unwrap_or_else(|| "gemini-2.0-flash".to_string()),
             Provider::OpenRouter => self.settings.openrouter.default_model.clone()
                 .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
+            Provider::Groq => self.settings.groq.default_model.clone()
+                .unwrap_or_else(|| "groq/compound".to_string()),
         };
     }
 

@@ -6,6 +6,7 @@ pub enum LLMProvider {
     Anthropic,
     Google,
     OpenRouter,
+    Groq,
 }
 
 impl std::fmt::Display for LLMProvider {
@@ -15,6 +16,7 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::Anthropic => write!(f, "anthropic"),
             LLMProvider::Google => write!(f, "google"),
             LLMProvider::OpenRouter => write!(f, "openrouter"),
+            LLMProvider::Groq => write!(f, "groq"),
         }
     }
 }

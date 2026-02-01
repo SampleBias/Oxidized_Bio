@@ -19,6 +19,7 @@ pub enum Provider {
     Anthropic,
     Google,
     OpenRouter,
+    Groq,
 }
 
 impl Default for Provider {
@@ -34,6 +35,7 @@ impl std::fmt::Display for Provider {
             Provider::Anthropic => write!(f, "anthropic"),
             Provider::Google => write!(f, "google"),
             Provider::OpenRouter => write!(f, "openrouter"),
+            Provider::Groq => write!(f, "groq"),
         }
     }
 }
@@ -45,6 +47,7 @@ impl Provider {
             "anthropic" => Some(Provider::Anthropic),
             "google" => Some(Provider::Google),
             "openrouter" => Some(Provider::OpenRouter),
+            "groq" => Some(Provider::Groq),
             _ => None,
         }
     }
@@ -90,6 +93,10 @@ pub struct UserSettings {
     /// OpenRouter configuration
     #[serde(default)]
     pub openrouter: ProviderConfig,
+
+    /// Groq configuration
+    #[serde(default)]
+    pub groq: ProviderConfig,
     
     /// Theme preference
     #[serde(default)]
@@ -129,6 +136,11 @@ impl Default for UserSettings {
                 default_model: None,
                 enabled: true,
             },
+            groq: ProviderConfig {
+                api_key: None,
+                default_model: Some("groq/compound".to_string()),
+                enabled: true,
+            },
             theme: Theme::Dark,
         }
     }
@@ -140,6 +152,7 @@ impl UserSettings {
         self.anthropic.api_key = None;
         self.google.api_key = None;
         self.openrouter.api_key = None;
+        self.groq.api_key = None;
     }
 
     pub fn set_single_provider_key(&mut self, provider_id: &str, key: String) {
@@ -149,6 +162,7 @@ impl UserSettings {
             "anthropic" => self.anthropic.api_key = Some(key),
             "google" => self.google.api_key = Some(key),
             "openrouter" => self.openrouter.api_key = Some(key),
+            "groq" => self.groq.api_key = Some(key),
             _ => {}
         }
 
@@ -171,6 +185,9 @@ impl UserSettings {
         if self.openrouter.api_key.is_some() {
             providers_with_keys.push("openrouter");
         }
+        if self.groq.api_key.is_some() {
+            providers_with_keys.push("groq");
+        }
 
         if providers_with_keys.len() <= 1 {
             return;
@@ -188,6 +205,7 @@ impl UserSettings {
             "anthropic" => self.anthropic.api_key.take(),
             "google" => self.google.api_key.take(),
             "openrouter" => self.openrouter.api_key.take(),
+            "groq" => self.groq.api_key.take(),
             _ => None,
         };
 
@@ -206,6 +224,7 @@ pub struct SettingsResponse {
     pub anthropic: ProviderStatus,
     pub google: ProviderStatus,
     pub openrouter: ProviderStatus,
+    pub groq: ProviderStatus,
     pub theme: Theme,
 }
 
@@ -250,6 +269,7 @@ impl From<&UserSettings> for SettingsResponse {
             anthropic: ProviderStatus::from(&settings.anthropic),
             google: ProviderStatus::from(&settings.google),
             openrouter: ProviderStatus::from(&settings.openrouter),
+            groq: ProviderStatus::from(&settings.groq),
             theme: settings.theme.clone(),
         }
     }
@@ -280,6 +300,11 @@ pub struct UpdateSettingsRequest {
     pub openrouter_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub openrouter_model: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groq_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groq_model: Option<String>,
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<Theme>,

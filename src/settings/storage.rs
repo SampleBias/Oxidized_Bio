@@ -139,6 +139,7 @@ impl SettingsStorage {
         self.decrypt_provider_key(&mut settings.anthropic, &key)?;
         self.decrypt_provider_key(&mut settings.google, &key)?;
         self.decrypt_provider_key(&mut settings.openrouter, &key)?;
+        self.decrypt_provider_key(&mut settings.groq, &key)?;
         
         info!("Loaded settings from {:?}", self.settings_path);
         Ok(settings)
@@ -155,6 +156,7 @@ impl SettingsStorage {
         self.encrypt_provider_key(&mut encrypted_settings.anthropic, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.google, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.openrouter, &key)?;
+        self.encrypt_provider_key(&mut encrypted_settings.groq, &key)?;
         
         let content = serde_json::to_string_pretty(&encrypted_settings)?;
         fs::write(&self.settings_path, content).await?;
@@ -195,6 +197,7 @@ impl SettingsStorage {
             "anthropic" => settings.anthropic.api_key,
             "google" => settings.google.api_key,
             "openrouter" => settings.openrouter.api_key,
+            "groq" => settings.groq.api_key,
             _ => None,
         };
         Ok(key)

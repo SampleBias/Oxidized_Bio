@@ -39,6 +39,7 @@ pub struct LLMConfig {
     pub anthropic_api_key: String,
     pub google_api_key: String,
     pub openrouter_api_key: String,
+    pub groq_api_key: String,
     pub default_provider: String,
     pub default_model: String,
 }
@@ -50,6 +51,7 @@ impl LLMConfig {
             "anthropic" => &self.anthropic_api_key,
             "google" => &self.google_api_key,
             "openrouter" => &self.openrouter_api_key,
+            "groq" => &self.groq_api_key,
             _ => "",
         };
         if key.is_empty() {
@@ -127,6 +129,7 @@ impl Config {
                 anthropic_api_key: env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
                 google_api_key: env::var("GOOGLE_API_KEY").unwrap_or_default(),
                 openrouter_api_key: env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+                groq_api_key: env::var("GROQ_API_KEY").unwrap_or_default(),
                 default_provider: env::var("REPLY_LLM_PROVIDER").unwrap_or_else(|_| "openai".to_string()),
                 default_model: env::var("REPLY_LLM_MODEL").unwrap_or_else(|_| "gpt-4".to_string()),
             },
