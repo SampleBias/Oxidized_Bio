@@ -14,7 +14,7 @@
 use crate::models::PlanTask;
 use crate::types::{LLMRequest, LLMMessage, AppResult};
 use crate::llm::provider::{LLMProviderConfig, LLM};
-use crate::search::{SerpApiClient, ScholarResult, LightResult, SearchError};
+use crate::search::SerpApiClient;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error};
@@ -296,18 +296,24 @@ impl LiteratureAgent {
         }
     }
 
-    /// Placeholder result when LLM is not available
+    /// Placeholder result when no API keys are configured
     fn placeholder_result(task: &PlanTask) -> LiteratureResult {
         LiteratureResult {
             task_id: task.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             objective: task.objective.clone(),
             findings: format!(
-                "Literature search pending for: {}. Please configure an LLM API key to enable full search functionality.",
+                "**No API keys configured**\n\n\
+                To research \"{}\" please configure at least one of:\n\n\
+                1. **SerpAPI key** (recommended) - Enables Google Scholar search for academic papers\n\
+                2. **LLM API key** - Enables AI-powered research (OpenAI, Anthropic, etc.)\n\n\
+                Press **Ctrl+S** to open Settings and add your API keys.\n\n\
+                *Tip: SerpAPI provides real academic citations. Get a key at serpapi.com*",
                 task.objective
             ),
             sources: vec![],
             key_insights: vec![
-                "LLM API key required for full literature search".to_string(),
+                "Configure SerpAPI for Google Scholar search (recommended)".to_string(),
+                "Or configure an LLM API key for AI-powered research".to_string(),
             ],
         }
     }

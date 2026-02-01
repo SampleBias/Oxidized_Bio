@@ -2,12 +2,12 @@
 //!
 //! Main UI layout and rendering logic for the TUI.
 
-use crate::tui::app::{App, MessageRole, PipelineStage, View};
+use crate::tui::app::{App, ApiStatus, MessageRole, PipelineStage, View};
 use crate::tui::theme::{Icons, Theme};
 use crate::tui::widgets;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
@@ -27,7 +27,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
-    render_header(frame, chunks[0]);
+    render_header(frame, chunks[0], app);
     widgets::render_progress(frame, chunks[1], &app.pipeline_stage, &app.current_objective);
     render_messages(frame, chunks[2], app);
     render_input(frame, chunks[3], app);
@@ -41,12 +41,32 @@ pub fn render(frame: &mut Frame, app: &App) {
     }
 }
 
-/// Render the header
-fn render_header(frame: &mut Frame, area: Rect) {
+/// Render the header with API status indicators
+fn render_header(frame: &mut Frame, area: Rect, app: &App) {
+    // Status dot styles
+    let green_dot = Style::default().fg(Color::Green);
+    let red_dot = Style::default().fg(Color::Red);
+
+    // LLM status dot
+    let llm_dot = match app.llm_status {
+        ApiStatus::Ready => Span::styled("●", green_dot),
+        ApiStatus::NotConfigured => Span::styled("●", red_dot),
+    };
+
+    // Search (SerpAPI) status dot  
+    let search_dot = match app.search_status {
+        ApiStatus::Ready => Span::styled("●", green_dot),
+        ApiStatus::NotConfigured => Span::styled("●", red_dot),
+    };
+
     let title_text = vec![Line::from(vec![
         Span::raw("🧬 "),
         Span::styled("Oxidized Bio", Theme::title()),
         Span::styled(" Research Agent", Theme::text_secondary()),
+        Span::raw("  "),
+        llm_dot,
+        Span::raw(" "),
+        search_dot,
     ])];
 
     let title = Paragraph::new(title_text)

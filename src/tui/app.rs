@@ -88,6 +88,15 @@ pub struct ProviderField {
     pub key_hint: Option<String>,
 }
 
+/// API status indicator
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ApiStatus {
+    /// API is configured and ready
+    Ready,
+    /// API is not configured
+    NotConfigured,
+}
+
 /// Main application state
 pub struct App {
     // Configuration
@@ -114,6 +123,10 @@ pub struct App {
     pub settings_input: String,
     pub settings_show_input: bool,
     pub providers: Vec<ProviderField>,
+
+    // API Status (for status indicators)
+    pub llm_status: ApiStatus,
+    pub search_status: ApiStatus,
 
     // Async communication
     event_rx: Option<mpsc::Receiver<AppEvent>>,
@@ -168,12 +181,32 @@ impl App {
             settings_input: String::new(),
             settings_show_input: false,
             providers,
+            llm_status: ApiStatus::NotConfigured,
+            search_status: ApiStatus::NotConfigured,
             event_rx: Some(rx),
             event_tx: Some(tx),
         };
 
         app.update_config_from_settings();
+        app.update_api_status();
         app
+    }
+
+    /// Update API status indicators based on current configuration
+    pub fn update_api_status(&mut self) {
+        // Check LLM status - any provider key configured
+        self.llm_status = if self.config.llm.active_api_key().is_some() {
+            ApiStatus::Ready
+        } else {
+            ApiStatus::NotConfigured
+        };
+
+        // Check SerpAPI status
+        self.search_status = if self.config.search.serpapi_available() {
+            ApiStatus::Ready
+        } else {
+            ApiStatus::NotConfigured
+        };
     }
 
     /// Build the provider list from settings
@@ -570,6 +603,9 @@ impl App {
 
         // Update config with new API key
         self.update_config_from_settings();
+        
+        // Update API status indicators
+        self.update_api_status();
     }
 
     /// Update config from settings

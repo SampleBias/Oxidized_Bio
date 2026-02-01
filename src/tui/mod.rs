@@ -28,7 +28,7 @@ pub mod theme;
 pub mod ui;
 pub mod widgets;
 
-pub use app::{App, AppEvent, PipelineStage, View};
+pub use app::{App, AppEvent, ApiStatus, PipelineStage, View};
 pub use event::{AppAction, EventHandler};
 
 use crossterm::{
