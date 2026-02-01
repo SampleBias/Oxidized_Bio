@@ -142,6 +142,7 @@ impl LLMAdapter for OpenAIAdapter {
                         tool_calls: None,
                         refusal: None,
                         function_call: None,
+                        audio: None,
                     }
                 ),
                 "system" => ChatCompletionRequestMessage::System(
