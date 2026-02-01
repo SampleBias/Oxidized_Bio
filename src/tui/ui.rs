@@ -14,7 +14,8 @@ use ratatui::{
 };
 
 /// Render the main UI
-pub fn render(frame: &mut Frame, app: &App) {
+/// Returns (content_height, viewport_height) for scroll bounds update
+pub fn render(frame: &mut Frame, app: &App) -> (u16, u16) {
     // Main layout
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -29,7 +30,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     render_header(frame, chunks[0]);
     widgets::render_progress(frame, chunks[1], &app.pipeline_stage, &app.current_objective);
-    render_messages(frame, chunks[2], app);
+    let (content_height, viewport_height) = render_messages(frame, chunks[2], app);
     render_input(frame, chunks[3], app);
     render_status_bar(frame, chunks[4], app);
 
@@ -39,6 +40,8 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::Help => render_help(frame),
         View::Chat => {}
     }
+    
+    (content_height, viewport_height)
 }
 
 /// Render the header
@@ -62,7 +65,8 @@ fn render_header(frame: &mut Frame, area: Rect) {
 }
 
 /// Render the message history
-fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
+/// Returns (content_height, viewport_height) for scroll bounds calculation
+fn render_messages(frame: &mut Frame, area: Rect, app: &App) -> (u16, u16) {
     let block = Block::default()
         .title(" Messages ")
         .borders(Borders::ALL)
@@ -120,7 +124,8 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(paragraph, inner_area);
 
-    // Update scroll bounds (would need mutable app, skip for now)
+    // Return heights for scroll bounds update in main loop
+    (content_height, viewport_height)
 }
 
 /// Render the input area
