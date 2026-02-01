@@ -256,12 +256,15 @@ async fn list_providers() -> impl IntoResponse {
         ProviderInfo {
             id: "groq".to_string(),
             name: "Groq Cloud".to_string(),
-            description: "OpenAI-compatible API for Groq-hosted models".to_string(),
+            description: "Ultra-fast inference with Llama, Mixtral, and more".to_string(),
             models: vec![
-                ModelInfo { id: "groq/compound".to_string(), name: "Groq Compound".to_string(), context_length: None, supports_vision: None },
-                ModelInfo { id: "groq/compound-mini".to_string(), name: "Groq Compound Mini".to_string(), context_length: None, supports_vision: None },
+                ModelInfo { id: "llama-3.3-70b-versatile".to_string(), name: "Llama 3.3 70B".to_string(), context_length: Some(128000), supports_vision: Some(false) },
+                ModelInfo { id: "llama-3.1-70b-versatile".to_string(), name: "Llama 3.1 70B".to_string(), context_length: Some(128000), supports_vision: Some(false) },
+                ModelInfo { id: "llama-3.1-8b-instant".to_string(), name: "Llama 3.1 8B (Fast)".to_string(), context_length: Some(128000), supports_vision: Some(false) },
+                ModelInfo { id: "mixtral-8x7b-32768".to_string(), name: "Mixtral 8x7B".to_string(), context_length: Some(32768), supports_vision: Some(false) },
+                ModelInfo { id: "gemma2-9b-it".to_string(), name: "Gemma 2 9B".to_string(), context_length: Some(8192), supports_vision: Some(false) },
             ],
-            docs_url: Some("https://console.groq.com/docs/openai".to_string()),
+            docs_url: Some("https://console.groq.com/docs".to_string()),
         },
     ];
 

@@ -138,7 +138,7 @@ impl Default for UserSettings {
             },
             groq: ProviderConfig {
                 api_key: None,
-                default_model: Some("groq/compound".to_string()),
+                default_model: Some("llama-3.3-70b-versatile".to_string()),
                 enabled: true,
             },
             theme: Theme::Dark,
