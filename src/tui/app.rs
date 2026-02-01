@@ -585,7 +585,7 @@ impl App {
             Provider::OpenRouter => self.settings.openrouter.default_model.clone()
                 .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
             Provider::Groq => self.settings.groq.default_model.clone()
-                .unwrap_or_else(|| "llama-3.3-70b-versatile".to_string()),
+                .unwrap_or_else(|| "groq/compound".to_string()),
         };
     }
 
