@@ -19,8 +19,12 @@ pub enum Provider {
     Anthropic,
     Google,
     OpenRouter,
+    /// GLM General API (https://api.z.ai/api/paas/v4) - works without subscription
     #[serde(rename = "glm")]
     GLM,
+    /// GLM Coding API (https://api.z.ai/api/coding/paas/v4) - requires Coding Plan subscription
+    #[serde(rename = "glm-coding")]
+    GLMCoding,
 }
 
 impl Default for Provider {
@@ -37,6 +41,7 @@ impl std::fmt::Display for Provider {
             Provider::Google => write!(f, "google"),
             Provider::OpenRouter => write!(f, "openrouter"),
             Provider::GLM => write!(f, "glm"),
+            Provider::GLMCoding => write!(f, "glm-coding"),
         }
     }
 }
@@ -48,7 +53,8 @@ impl Provider {
             "anthropic" => Some(Provider::Anthropic),
             "google" => Some(Provider::Google),
             "openrouter" => Some(Provider::OpenRouter),
-            "glm" => Some(Provider::GLM),
+            "glm" | "glm-general" => Some(Provider::GLM),
+            "glm-coding" => Some(Provider::GLMCoding),
             _ => None,
         }
     }
@@ -163,7 +169,8 @@ impl UserSettings {
             "anthropic" => self.anthropic.api_key = Some(key),
             "google" => self.google.api_key = Some(key),
             "openrouter" => self.openrouter.api_key = Some(key),
-            "glm" => self.glm.api_key = Some(key),
+            // Both glm and glm-coding use the same API key
+            "glm" | "glm-coding" => self.glm.api_key = Some(key),
             _ => {}
         }
 

@@ -211,8 +211,18 @@ impl App {
             },
             ProviderField {
                 id: "glm",
-                name: "GLM (Zhipu)",
+                name: "GLM (General API)",
                 has_key: settings.glm.api_key.is_some(),
+                key_hint: settings
+                    .glm
+                    .api_key
+                    .as_ref()
+                    .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
+            },
+            ProviderField {
+                id: "glm-coding",
+                name: "GLM (Coding Plan)",
+                has_key: settings.glm.api_key.is_some(), // Uses same API key as GLM
                 key_hint: settings
                     .glm
                     .api_key
@@ -583,7 +593,8 @@ impl App {
                 .unwrap_or_else(|| "gemini-2.0-flash".to_string()),
             Provider::OpenRouter => self.settings.openrouter.default_model.clone()
                 .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
-            Provider::GLM => self.settings.glm.default_model.clone()
+            // Both GLM providers use the same model names, just different API endpoints
+            Provider::GLM | Provider::GLMCoding => self.settings.glm.default_model.clone()
                 .unwrap_or_else(|| "glm-4.7".to_string()),
         };
     }
