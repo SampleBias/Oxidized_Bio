@@ -242,10 +242,12 @@ async fn list_providers() -> impl IntoResponse {
             ],
             docs_url: Some("https://ai.google.dev/docs".to_string()),
         },
+        // GLM General API - for general use and vision models
+        // Endpoint: https://api.z.ai/api/paas/v4
         ProviderInfo {
             id: "glm".to_string(),
-            name: "GLM (Zhipu AI / Z.AI)".to_string(),
-            description: "GLM-4.7 (flagship text), GLM-4.6V (vision/multimodal)".to_string(),
+            name: "GLM (Z.AI General API)".to_string(),
+            description: "General API for GLM models and vision. Use 'glm-coding' for Coding Plan.".to_string(),
             models: vec![
                 // GLM-4.7 Series - Text models (200K context, 128K output)
                 ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Flagship)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
@@ -261,6 +263,20 @@ async fn list_providers() -> impl IntoResponse {
                 ModelInfo { id: "glm-4.5v".to_string(), name: "GLM-4.5V (Vision)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
             ],
             docs_url: Some("https://docs.z.ai/guides/overview/quick-start".to_string()),
+        },
+        // GLM Coding API - requires GLM Coding Plan subscription
+        // Endpoint: https://api.z.ai/api/coding/paas/v4
+        ProviderInfo {
+            id: "glm-coding".to_string(),
+            name: "GLM (Z.AI Coding Plan)".to_string(),
+            description: "Coding API for GLM-4.7. Requires GLM Coding Plan subscription ($3/month).".to_string(),
+            models: vec![
+                // Only text models available on Coding API
+                ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+                ModelInfo { id: "glm-4.7-flashx".to_string(), name: "GLM-4.7-FlashX (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+                ModelInfo { id: "glm-4.7-flash".to_string(), name: "GLM-4.7-Flash (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
+            ],
+            docs_url: Some("https://docs.z.ai/devpack/overview".to_string()),
         },
         ProviderInfo {
             id: "openrouter".to_string(),

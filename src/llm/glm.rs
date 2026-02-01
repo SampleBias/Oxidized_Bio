@@ -118,29 +118,60 @@ struct GLMError {
 }
 
 impl GLMAdapter {
-    /// Create a new GLM adapter
-    /// All GLM models (text and vision) use the same API endpoint
+    /// Create a new GLM adapter using the General API endpoint
+    /// Use this for: general chat, vision models (GLM-4.6V), and non-coding tasks
+    /// Endpoint: https://api.z.ai/api/paas/v4
     pub fn new(api_key: &str) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.to_string(),
+            use_coding_api: false,  // Default to general API
         }
     }
 
-    /// Alias for new() - kept for backwards compatibility
-    #[deprecated(note = "All GLM models use the same API endpoint. Use new() instead.")]
+    /// Create a GLM adapter using the Coding API endpoint (requires GLM Coding Plan)
+    /// Use this for: coding scenarios with GLM-4.7 in tools like Claude Code, Cline, etc.
+    /// Endpoint: https://api.z.ai/api/coding/paas/v4
+    /// 
+    /// NOTE: This endpoint requires a GLM Coding Plan subscription!
+    /// If you get "Unknown Model" errors, you may not have the Coding Plan.
+    /// Use `new()` for the general API instead.
+    pub fn with_coding_api(api_key: &str) -> Self {
+        Self {
+            client: Client::new(),
+            api_key: api_key.to_string(),
+            use_coding_api: true,
+        }
+    }
+
+    /// Create a GLM adapter using the General API endpoint
+    /// Alias for new() - use for vision models and general tasks
     pub fn with_general_api(api_key: &str) -> Self {
         Self::new(api_key)
     }
 
-    /// Alias for new() - kept for backwards compatibility
-    #[deprecated(note = "All GLM models use the same API endpoint. Use new() instead.")]
-    pub fn with_api_type(api_key: &str, _use_coding_api: bool) -> Self {
-        Self::new(api_key)
+    /// Create a GLM adapter with explicit API endpoint selection
+    /// - use_coding_api = true: Uses Coding API (requires GLM Coding Plan subscription)
+    /// - use_coding_api = false: Uses General API (recommended for most users)
+    pub fn with_api_type(api_key: &str, use_coding_api: bool) -> Self {
+        Self {
+            client: Client::new(),
+            api_key: api_key.to_string(),
+            use_coding_api,
+        }
+    }
+
+    fn base_url(&self) -> &str {
+        if self.use_coding_api {
+            GLM_CODING_API_BASE
+        } else {
+            GLM_GENERAL_API_BASE
+        }
     }
 
     /// Check if a model is a vision model (requires multimodal content format)
     /// Vision models: glm-4.6v, glm-4.6v-flashx, glm-4.6v-flash, glm-4.5v, autoglm-*
+    /// NOTE: Vision models should ALWAYS use the General API, not the Coding API
     fn is_vision_model(model: &str) -> bool {
         let model_lower = model.to_lowercase();
         // GLM vision models have "v" suffix (e.g., glm-4.6v, glm-4.5v)
@@ -198,7 +229,7 @@ impl GLMAdapter {
 #[async_trait]
 impl LLMAdapter for GLMAdapter {
     async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
-        let url = format!("{}/chat/completions", GLM_API_BASE);
+        let url = format!("{}/chat/completions", self.base_url());
 
         let messages: Vec<GLMMessage> = request
             .messages
@@ -343,9 +374,33 @@ mod tests {
     }
 
     #[test]
-    fn test_api_endpoint() {
-        // All adapters should use the same API endpoint
-        assert_eq!(GLM_API_BASE, "https://api.z.ai/api/paas/v4");
+    fn test_api_endpoints() {
+        // Verify the two different API endpoints
+        assert_eq!(GLM_CODING_API_BASE, "https://api.z.ai/api/coding/paas/v4");
+        assert_eq!(GLM_GENERAL_API_BASE, "https://api.z.ai/api/paas/v4");
+    }
+
+    #[test]
+    fn test_base_url_selection() {
+        // Default adapter should use General API
+        let general_adapter = GLMAdapter::new("test-key");
+        assert_eq!(general_adapter.base_url(), GLM_GENERAL_API_BASE);
+
+        // with_general_api should use General API
+        let general_adapter2 = GLMAdapter::with_general_api("test-key");
+        assert_eq!(general_adapter2.base_url(), GLM_GENERAL_API_BASE);
+
+        // with_coding_api should use Coding API
+        let coding_adapter = GLMAdapter::with_coding_api("test-key");
+        assert_eq!(coding_adapter.base_url(), GLM_CODING_API_BASE);
+
+        // with_api_type(true) should use Coding API
+        let coding_adapter2 = GLMAdapter::with_api_type("test-key", true);
+        assert_eq!(coding_adapter2.base_url(), GLM_CODING_API_BASE);
+
+        // with_api_type(false) should use General API
+        let general_adapter3 = GLMAdapter::with_api_type("test-key", false);
+        assert_eq!(general_adapter3.base_url(), GLM_GENERAL_API_BASE);
     }
     
     #[test]
