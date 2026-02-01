@@ -189,6 +189,28 @@ impl App {
 
         app.update_config_from_settings();
         app.update_api_status();
+        
+        // Update welcome message with actual API status
+        let llm_status_str = if app.config.llm.active_api_key().is_some() {
+            format!("LLM: ✓ {} configured", app.config.llm.default_provider)
+        } else {
+            "LLM: ✗ Not configured".to_string()
+        };
+        
+        let search_status_str = if app.config.search.serpapi_available() {
+            "SerpAPI: ✓ Configured".to_string()
+        } else {
+            "SerpAPI: ✗ Not configured".to_string()
+        };
+        
+        app.messages[0].content = format!(
+            "Welcome to Oxidized Bio Research Agent!\n\n\
+             API Status: {} | {}\n\n\
+             Type a research question below to get started.\n\
+             Press Ctrl+S to configure your API keys in Settings.",
+            llm_status_str, search_status_str
+        );
+        
         app
     }
 
@@ -471,14 +493,20 @@ impl App {
             timestamp: Utc::now(),
         });
 
-        // Check if any API key is configured
-        let has_api_key = self.settings.openai.api_key.is_some()
+        // Check if any API key is configured (in settings)
+        let has_llm_key = self.settings.openai.api_key.is_some()
             || self.settings.anthropic.api_key.is_some()
             || self.settings.google.api_key.is_some()
             || self.settings.openrouter.api_key.is_some()
             || self.settings.groq.api_key.is_some();
+        
+        let has_serpapi_key = self.settings.search.serpapi_key.is_some();
 
-        if !has_api_key {
+        // Also verify the config has the keys (should match settings)
+        let config_has_llm = self.config.llm.active_api_key().is_some();
+        let config_has_serpapi = self.config.search.serpapi_available();
+
+        if !has_llm_key && !has_serpapi_key {
             self.messages.push(ChatMessage {
                 role: MessageRole::System,
                 content: "No API key configured. Press Ctrl+S to open Settings and add an API key."
@@ -486,6 +514,17 @@ impl App {
                 timestamp: Utc::now(),
             });
             return;
+        }
+
+        // Debug: Show if there's a mismatch between settings and config
+        if (has_llm_key && !config_has_llm) || (has_serpapi_key && !config_has_serpapi) {
+            warn!(
+                "Config mismatch - Settings has LLM: {}, Config has LLM: {}, Settings has SerpAPI: {}, Config has SerpAPI: {}",
+                has_llm_key, config_has_llm, has_serpapi_key, config_has_serpapi
+            );
+            // Force update config from settings
+            self.update_config_from_settings();
+            self.update_api_status();
         }
 
         // Start research pipeline
@@ -582,6 +621,9 @@ impl App {
         // Handle SerpAPI separately (it's a search API, not LLM provider)
         if provider_id == "serpapi" {
             self.settings.search.serpapi_key = Some(key);
+            // Ensure search engines are enabled when key is set
+            self.settings.search.scholar_enabled = true;
+            self.settings.search.light_enabled = true;
         } else {
             // Update settings (only one LLM provider key at a time)
             if crate::settings::Provider::from_id(provider_id).is_none() {
@@ -593,6 +635,11 @@ impl App {
         // Save to storage
         if let Err(e) = self.settings_storage.save(&self.settings).await {
             error!("Failed to save settings: {}", e);
+            self.messages.push(ChatMessage {
+                role: MessageRole::System,
+                content: format!("Failed to save API key: {}", e),
+                timestamp: Utc::now(),
+            });
         } else {
             info!("Settings saved for: {}", provider_id);
         }
@@ -606,6 +653,20 @@ impl App {
         
         // Update API status indicators
         self.update_api_status();
+        
+        // Show confirmation with current status
+        let llm_ok = self.config.llm.active_api_key().is_some();
+        let search_ok = self.config.search.serpapi_available();
+        self.messages.push(ChatMessage {
+            role: MessageRole::System,
+            content: format!(
+                "API key saved for {}.\n\nCurrent status: LLM {} | SerpAPI {}",
+                provider_id,
+                if llm_ok { "✓" } else { "✗" },
+                if search_ok { "✓" } else { "✗" }
+            ),
+            timestamp: Utc::now(),
+        });
     }
 
     /// Update config from settings

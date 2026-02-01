@@ -142,6 +142,15 @@ impl SettingsStorage {
         self.decrypt_provider_key(&mut settings.groq, &key)?;
         self.decrypt_search_key(&mut settings.search, &key)?;
         
+        // Fix legacy settings: ensure search engines are enabled when key exists
+        if settings.search.serpapi_key.is_some() {
+            if !settings.search.scholar_enabled && !settings.search.light_enabled {
+                info!("Fixing legacy settings: enabling search engines for existing SerpAPI key");
+                settings.search.scholar_enabled = true;
+                settings.search.light_enabled = true;
+            }
+        }
+        
         info!("Loaded settings from {:?}", self.settings_path);
         Ok(settings)
     }
