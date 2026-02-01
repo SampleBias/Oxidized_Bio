@@ -53,11 +53,13 @@ impl PlanningAgent {
         info!(message_len = message.len(), "Starting planning agent");
 
         // Get LLM provider configuration
-        let api_key = config.llm.openai_api_key.clone();
-        if api_key.is_empty() {
-            warn!("No OpenAI API key configured, using simple planning fallback");
-            return Ok(Self::simple_plan(message));
-        }
+        let api_key = match config.llm.active_api_key() {
+            Some(key) => key,
+            None => {
+                warn!("No LLM API key configured, using simple planning fallback");
+                return Ok(Self::simple_plan(message));
+            }
+        };
 
         // Build context from conversation state
         let context = Self::build_context(conversation_state);

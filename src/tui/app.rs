@@ -152,7 +152,7 @@ impl App {
             timestamp: Utc::now(),
         }];
 
-        Self {
+        let mut app = Self {
             config,
             view: View::Chat,
             should_quit: false,
@@ -170,7 +170,10 @@ impl App {
             providers,
             event_rx: Some(rx),
             event_tx: Some(tx),
-        }
+        };
+
+        app.update_config_from_settings();
+        app
     }
 
     /// Build the provider list from settings
@@ -369,16 +372,6 @@ impl App {
             AppAction::Input(key_event) => {
                 self.handle_input(key_event);
             }
-            AppAction::EditField => {
-                if self.view == View::Settings {
-                    self.settings_show_input = true;
-                }
-            }
-            AppAction::DeleteKey => {
-                if self.view == View::Settings && self.settings_show_input {
-                    self.settings_input.pop();
-                }
-            }
             AppAction::Tick => {
                 // Animation tick - could update spinner, etc.
             }
@@ -389,16 +382,23 @@ impl App {
     fn handle_input(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
-        if self.view == View::Settings && self.settings_show_input {
-            // Settings input mode
-            match key.code {
-                KeyCode::Char(c) => {
-                    self.settings_input.push(c);
+        if self.view == View::Settings {
+            if self.settings_show_input {
+                // Settings input mode
+                match key.code {
+                    KeyCode::Char(c) => {
+                        self.settings_input.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        self.settings_input.pop();
+                    }
+                    _ => {}
                 }
-                KeyCode::Backspace => {
-                    self.settings_input.pop();
-                }
-                _ => {}
+            } else if key.modifiers == crossterm::event::KeyModifiers::NONE
+                && key.code == KeyCode::Char('e')
+            {
+                // Enter edit mode for the selected provider
+                self.settings_show_input = true;
             }
         } else if self.view == View::Chat {
             // Chat input mode - delegate to textarea
@@ -534,15 +534,11 @@ impl App {
         let provider_id = self.providers[self.settings_field_index].id;
         let key = std::mem::take(&mut self.settings_input);
 
-        // Update settings
-        match provider_id {
-            "openai" => self.settings.openai.api_key = Some(key),
-            "anthropic" => self.settings.anthropic.api_key = Some(key),
-            "google" => self.settings.google.api_key = Some(key),
-            "glm" => self.settings.glm.api_key = Some(key),
-            "openrouter" => self.settings.openrouter.api_key = Some(key),
-            _ => {}
+        // Update settings (only one provider key at a time)
+        if crate::settings::Provider::from_id(provider_id).is_none() {
+            return;
         }
+        self.settings.set_single_provider_key(provider_id, key);
 
         // Save to storage
         if let Err(e) = self.settings_storage.save(&self.settings).await {
@@ -561,16 +557,16 @@ impl App {
 
     /// Update config from settings
     fn update_config_from_settings(&mut self) {
-        if let Some(key) = &self.settings.openai.api_key {
-            self.config.llm.openai_api_key = key.clone();
-        }
-        if let Some(key) = &self.settings.anthropic.api_key {
-            self.config.llm.anthropic_api_key = key.clone();
-        }
-        if let Some(key) = &self.settings.google.api_key {
-            self.config.llm.google_api_key = key.clone();
-        }
-        // GLM and OpenRouter would need to be added to config if not present
+        self.config.llm.openai_api_key =
+            self.settings.openai.api_key.clone().unwrap_or_default();
+        self.config.llm.anthropic_api_key =
+            self.settings.anthropic.api_key.clone().unwrap_or_default();
+        self.config.llm.google_api_key =
+            self.settings.google.api_key.clone().unwrap_or_default();
+        self.config.llm.glm_api_key = self.settings.glm.api_key.clone().unwrap_or_default();
+        self.config.llm.openrouter_api_key =
+            self.settings.openrouter.api_key.clone().unwrap_or_default();
+        self.config.llm.default_provider = self.settings.default_provider.to_string();
     }
 
     /// Scroll to bottom of messages

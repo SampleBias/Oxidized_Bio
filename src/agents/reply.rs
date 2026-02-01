@@ -41,11 +41,13 @@ impl ReplyAgent {
         );
 
         // Get LLM provider configuration
-        let api_key = config.llm.openai_api_key.clone();
-        if api_key.is_empty() {
-            warn!("No OpenAI API key configured, using simple response");
-            return Ok(Self::simple_response(user_message, literature_results));
-        }
+        let api_key = match config.llm.active_api_key() {
+            Some(key) => key,
+            None => {
+                warn!("No LLM API key configured, using simple response");
+                return Ok(Self::simple_response(user_message, literature_results));
+            }
+        };
 
         // Build the prompt based on mode
         let prompt = match mode {

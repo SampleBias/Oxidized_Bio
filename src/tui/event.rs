@@ -34,10 +34,6 @@ pub enum AppAction {
     NextField,
     /// Move to previous field (Shift+Tab)
     PrevField,
-    /// Start editing current field
-    EditField,
-    /// Delete character
-    DeleteKey,
     /// Regular input character
     Input(KeyEvent),
     /// Timer tick for animations
@@ -146,14 +142,6 @@ impl EventHandler {
 
                 // Tab navigation
                 KeyCode::Tab => Some(AppAction::NextField),
-
-                // Editing
-                KeyCode::Backspace => Some(AppAction::DeleteKey),
-
-                // Edit field trigger (Enter or specific key in settings)
-                KeyCode::Char('e') if key.modifiers == KeyModifiers::NONE => {
-                    Some(AppAction::EditField)
-                }
 
                 // All other characters are input
                 _ => Some(AppAction::Input(key)),

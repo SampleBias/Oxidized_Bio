@@ -38,8 +38,28 @@ pub struct LLMConfig {
     pub openai_api_key: String,
     pub anthropic_api_key: String,
     pub google_api_key: String,
+    pub glm_api_key: String,
+    pub openrouter_api_key: String,
     pub default_provider: String,
     pub default_model: String,
+}
+
+impl LLMConfig {
+    pub fn active_api_key(&self) -> Option<String> {
+        let key = match self.default_provider.as_str() {
+            "openai" => &self.openai_api_key,
+            "anthropic" => &self.anthropic_api_key,
+            "google" => &self.google_api_key,
+            "glm" => &self.glm_api_key,
+            "openrouter" => &self.openrouter_api_key,
+            _ => "",
+        };
+        if key.is_empty() {
+            None
+        } else {
+            Some(key.to_string())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -108,6 +128,8 @@ impl Config {
                 openai_api_key: env::var("OPENAI_API_KEY").unwrap_or_default(),
                 anthropic_api_key: env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
                 google_api_key: env::var("GOOGLE_API_KEY").unwrap_or_default(),
+                glm_api_key: env::var("GLM_API_KEY").unwrap_or_default(),
+                openrouter_api_key: env::var("OPENROUTER_API_KEY").unwrap_or_default(),
                 default_provider: env::var("REPLY_LLM_PROVIDER").unwrap_or_else(|_| "openai".to_string()),
                 default_model: env::var("REPLY_LLM_MODEL").unwrap_or_else(|_| "gpt-4".to_string()),
             },

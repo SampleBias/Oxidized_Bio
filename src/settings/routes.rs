@@ -13,7 +13,7 @@ use axum::{
     http::StatusCode,
 };
 use super::{
-    SettingsStorage, UserSettings, SettingsResponse, UpdateSettingsRequest,
+    SettingsStorage, SettingsResponse, UpdateSettingsRequest,
     Provider, ProviderStatus,
 };
 use serde::Serialize;
@@ -75,13 +75,15 @@ async fn update_settings(
     if let Some(provider) = request.default_provider {
         settings.default_provider = provider;
     }
-    
+
+    let mut provided_keys: Vec<(&str, String)> = Vec::new();
+
     // Update OpenAI
     if let Some(key) = request.openai_key {
         if key.is_empty() {
             settings.openai.api_key = None;
         } else {
-            settings.openai.api_key = Some(key);
+            provided_keys.push(("openai", key));
         }
     }
     if let Some(model) = request.openai_model {
@@ -93,7 +95,7 @@ async fn update_settings(
         if key.is_empty() {
             settings.anthropic.api_key = None;
         } else {
-            settings.anthropic.api_key = Some(key);
+            provided_keys.push(("anthropic", key));
         }
     }
     if let Some(model) = request.anthropic_model {
@@ -105,7 +107,7 @@ async fn update_settings(
         if key.is_empty() {
             settings.google.api_key = None;
         } else {
-            settings.google.api_key = Some(key);
+            provided_keys.push(("google", key));
         }
     }
     if let Some(model) = request.google_model {
@@ -117,7 +119,7 @@ async fn update_settings(
         if key.is_empty() {
             settings.openrouter.api_key = None;
         } else {
-            settings.openrouter.api_key = Some(key);
+            provided_keys.push(("openrouter", key));
         }
     }
     if let Some(model) = request.openrouter_model {
@@ -129,7 +131,7 @@ async fn update_settings(
         if key.is_empty() {
             settings.glm.api_key = None;
         } else {
-            settings.glm.api_key = Some(key);
+            provided_keys.push(("glm", key));
         }
     }
     if let Some(model) = request.glm_model {
@@ -139,6 +141,21 @@ async fn update_settings(
     // Update theme
     if let Some(theme) = request.theme {
         settings.theme = theme;
+    }
+
+    if provided_keys.len() > 1 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Only one provider key can be configured at a time"
+            }))
+        ).into_response();
+    }
+
+    if let Some((provider_id, key)) = provided_keys.pop() {
+        settings.set_single_provider_key(provider_id, key);
+    } else {
+        settings.enforce_single_provider_key();
     }
 
     // Save settings

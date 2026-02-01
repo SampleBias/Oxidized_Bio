@@ -41,6 +41,19 @@ impl std::fmt::Display for Provider {
     }
 }
 
+impl Provider {
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "openai" => Some(Provider::OpenAI),
+            "anthropic" => Some(Provider::Anthropic),
+            "google" => Some(Provider::Google),
+            "openrouter" => Some(Provider::OpenRouter),
+            "glm" => Some(Provider::GLM),
+            _ => None,
+        }
+    }
+}
+
 /// API key configuration for a provider
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderConfig {
@@ -130,6 +143,76 @@ impl Default for UserSettings {
                 enabled: true,
             },
             theme: Theme::Dark,
+        }
+    }
+}
+
+impl UserSettings {
+    pub fn clear_api_keys(&mut self) {
+        self.openai.api_key = None;
+        self.anthropic.api_key = None;
+        self.google.api_key = None;
+        self.openrouter.api_key = None;
+        self.glm.api_key = None;
+    }
+
+    pub fn set_single_provider_key(&mut self, provider_id: &str, key: String) {
+        self.clear_api_keys();
+        match provider_id {
+            "openai" => self.openai.api_key = Some(key),
+            "anthropic" => self.anthropic.api_key = Some(key),
+            "google" => self.google.api_key = Some(key),
+            "openrouter" => self.openrouter.api_key = Some(key),
+            "glm" => self.glm.api_key = Some(key),
+            _ => {}
+        }
+
+        if let Some(provider) = Provider::from_id(provider_id) {
+            self.default_provider = provider;
+        }
+    }
+
+    pub fn enforce_single_provider_key(&mut self) {
+        let mut providers_with_keys = Vec::new();
+        if self.openai.api_key.is_some() {
+            providers_with_keys.push("openai");
+        }
+        if self.anthropic.api_key.is_some() {
+            providers_with_keys.push("anthropic");
+        }
+        if self.google.api_key.is_some() {
+            providers_with_keys.push("google");
+        }
+        if self.openrouter.api_key.is_some() {
+            providers_with_keys.push("openrouter");
+        }
+        if self.glm.api_key.is_some() {
+            providers_with_keys.push("glm");
+        }
+
+        if providers_with_keys.len() <= 1 {
+            return;
+        }
+
+        let default_id = self.default_provider.to_string();
+        let keep_id = if providers_with_keys.contains(&default_id.as_str()) {
+            default_id
+        } else {
+            providers_with_keys[0].to_string()
+        };
+
+        let keep_key = match keep_id.as_str() {
+            "openai" => self.openai.api_key.take(),
+            "anthropic" => self.anthropic.api_key.take(),
+            "google" => self.google.api_key.take(),
+            "openrouter" => self.openrouter.api_key.take(),
+            "glm" => self.glm.api_key.take(),
+            _ => None,
+        };
+
+        self.clear_api_keys();
+        if let Some(key) = keep_key {
+            self.set_single_provider_key(&keep_id, key);
         }
     }
 }

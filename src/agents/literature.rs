@@ -73,11 +73,13 @@ impl LiteratureAgent {
         info!(task_id = %task_id, objective = %task.objective, "Starting literature search");
 
         // Get LLM provider configuration
-        let api_key = config.llm.openai_api_key.clone();
-        if api_key.is_empty() {
-            warn!("No OpenAI API key configured, using placeholder response");
-            return Ok(Self::placeholder_result(task));
-        }
+        let api_key = match config.llm.active_api_key() {
+            Some(key) => key,
+            None => {
+                warn!("No LLM API key configured, using placeholder response");
+                return Ok(Self::placeholder_result(task));
+            }
+        };
 
         // Create the search prompt
         let prompt = Self::create_search_prompt(&task.objective);
