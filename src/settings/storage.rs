@@ -3,7 +3,7 @@
 //! Provides encrypted file-based storage for user settings.
 //! Uses AES-256-GCM for encryption of sensitive data like API keys.
 
-use super::{UserSettings, ProviderConfig};
+use super::{UserSettings, ProviderConfig, SearchApiConfig};
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
@@ -140,6 +140,7 @@ impl SettingsStorage {
         self.decrypt_provider_key(&mut settings.google, &key)?;
         self.decrypt_provider_key(&mut settings.openrouter, &key)?;
         self.decrypt_provider_key(&mut settings.groq, &key)?;
+        self.decrypt_search_key(&mut settings.search, &key)?;
         
         info!("Loaded settings from {:?}", self.settings_path);
         Ok(settings)
@@ -157,6 +158,7 @@ impl SettingsStorage {
         self.encrypt_provider_key(&mut encrypted_settings.google, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.openrouter, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.groq, &key)?;
+        self.encrypt_search_key(&mut encrypted_settings.search, &key)?;
         
         let content = serde_json::to_string_pretty(&encrypted_settings)?;
         fs::write(&self.settings_path, content).await?;
@@ -189,6 +191,30 @@ impl SettingsStorage {
         Ok(())
     }
 
+    fn encrypt_search_key(&self, config: &mut SearchApiConfig, key: &[u8; 32]) -> anyhow::Result<()> {
+        if let Some(api_key) = &config.serpapi_key {
+            if !api_key.is_empty() {
+                config.serpapi_key = Some(self.encrypt(api_key, key)?);
+            }
+        }
+        Ok(())
+    }
+
+    fn decrypt_search_key(&self, config: &mut SearchApiConfig, key: &[u8; 32]) -> anyhow::Result<()> {
+        if let Some(encrypted_key) = &config.serpapi_key {
+            if !encrypted_key.is_empty() {
+                match self.decrypt(encrypted_key, key) {
+                    Ok(decrypted) => config.serpapi_key = Some(decrypted),
+                    Err(e) => {
+                        warn!("Failed to decrypt SerpAPI key, it may be corrupted: {}", e);
+                        config.serpapi_key = None;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Get API key for a specific provider
     pub async fn get_api_key(&self, provider: &str) -> anyhow::Result<Option<String>> {
         let settings = self.load().await?;
@@ -198,9 +224,16 @@ impl SettingsStorage {
             "google" => settings.google.api_key,
             "openrouter" => settings.openrouter.api_key,
             "groq" => settings.groq.api_key,
+            "serpapi" => settings.search.serpapi_key,
             _ => None,
         };
         Ok(key)
+    }
+
+    /// Get SerpAPI key specifically
+    pub async fn get_serpapi_key(&self) -> anyhow::Result<Option<String>> {
+        let settings = self.load().await?;
+        Ok(settings.search.serpapi_key)
     }
 }
 

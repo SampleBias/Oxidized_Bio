@@ -179,6 +179,7 @@ impl App {
     /// Build the provider list from settings
     fn build_provider_list(settings: &UserSettings) -> Vec<ProviderField> {
         vec![
+            // LLM Providers
             ProviderField {
                 id: "openai",
                 name: "OpenAI",
@@ -226,6 +227,17 @@ impl App {
                 key_hint: settings
                     .groq
                     .api_key
+                    .as_ref()
+                    .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
+            },
+            // Search API (SerpAPI for Google Scholar/Light)
+            ProviderField {
+                id: "serpapi",
+                name: "SerpAPI (Scholar/Search)",
+                has_key: settings.search.serpapi_key.is_some(),
+                key_hint: settings
+                    .search
+                    .serpapi_key
                     .as_ref()
                     .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
             },
@@ -534,17 +546,22 @@ impl App {
         let provider_id = self.providers[self.settings_field_index].id;
         let key = std::mem::take(&mut self.settings_input);
 
-        // Update settings (only one provider key at a time)
-        if crate::settings::Provider::from_id(provider_id).is_none() {
-            return;
+        // Handle SerpAPI separately (it's a search API, not LLM provider)
+        if provider_id == "serpapi" {
+            self.settings.search.serpapi_key = Some(key);
+        } else {
+            // Update settings (only one LLM provider key at a time)
+            if crate::settings::Provider::from_id(provider_id).is_none() {
+                return;
+            }
+            self.settings.set_single_provider_key(provider_id, key);
         }
-        self.settings.set_single_provider_key(provider_id, key);
 
         // Save to storage
         if let Err(e) = self.settings_storage.save(&self.settings).await {
             error!("Failed to save settings: {}", e);
         } else {
-            info!("Settings saved for provider: {}", provider_id);
+            info!("Settings saved for: {}", provider_id);
         }
 
         // Refresh provider list
@@ -557,7 +574,7 @@ impl App {
 
     /// Update config from settings
     fn update_config_from_settings(&mut self) {
-        // Update API keys
+        // Update LLM API keys
         self.config.llm.openai_api_key =
             self.settings.openai.api_key.clone().unwrap_or_default();
         self.config.llm.anthropic_api_key =
@@ -569,7 +586,7 @@ impl App {
         self.config.llm.groq_api_key =
             self.settings.groq.api_key.clone().unwrap_or_default();
         
-        // Update provider
+        // Update LLM provider
         self.config.llm.default_provider = self.settings.default_provider.to_string();
         
         // Update model based on selected provider's default model
@@ -587,6 +604,12 @@ impl App {
             Provider::Groq => self.settings.groq.default_model.clone()
                 .unwrap_or_else(|| "groq/compound".to_string()),
         };
+
+        // Update Search API config (SerpAPI)
+        self.config.search.serpapi_key =
+            self.settings.search.serpapi_key.clone().unwrap_or_default();
+        self.config.search.scholar_enabled = self.settings.search.scholar_enabled;
+        self.config.search.light_enabled = self.settings.search.light_enabled;
     }
 
     /// Scroll to bottom of messages

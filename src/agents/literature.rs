@@ -1,18 +1,20 @@
 //! Literature Agent
 //! 
 //! Searches scientific literature and databases for relevant information.
-//! In a full implementation, this would integrate with:
-//! - PubMed/PubMed Central
-//! - OpenScholar
-//! - UniProt, PubChem
-//! - ClinicalTrials.gov
-//! - Patent databases
-//!
-//! For now, this uses LLM knowledge as a fallback.
+//! 
+//! ## Search Strategy (Cascade)
+//! 
+//! 1. **Google Scholar (Primary)** - Academic papers, peer-reviewed research
+//! 2. **Google Light (Secondary)** - General web search filtered for reliable sources
+//! 3. **LLM Knowledge (Fallback)** - AI knowledge base when search APIs unavailable
+//! 
+//! This approach ensures comprehensive, evidence-based information retrieval
+//! prioritizing peer-reviewed academic sources.
 
 use crate::models::PlanTask;
 use crate::types::{LLMRequest, LLMMessage, AppResult};
 use crate::llm::provider::{LLMProviderConfig, LLM};
+use crate::search::{SerpApiClient, ScholarResult, LightResult, SearchError};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error};
@@ -61,10 +63,20 @@ struct SourceRaw {
     summary: String,
 }
 
+/// Internal result from search cascade
+struct SearchCascadeResult {
+    findings: String,
+    sources: Vec<SourceReference>,
+    key_insights: Vec<String>,
+}
+
 pub struct LiteratureAgent;
 
 impl LiteratureAgent {
-    /// Execute a literature search task
+    /// Execute a literature search task using cascade strategy:
+    /// 1. Google Scholar (Primary) - Academic papers
+    /// 2. Google Light (Secondary) - Reliable web sources
+    /// 3. LLM Knowledge (Fallback) - AI knowledge base
     pub async fn execute_task(
         task: &PlanTask,
         config: &crate::config::Config,
@@ -72,6 +84,152 @@ impl LiteratureAgent {
         let task_id = task.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         info!(task_id = %task_id, objective = %task.objective, "Starting literature search");
 
+        // Try SerpAPI search first (Scholar -> Light cascade)
+        if config.search.serpapi_available() {
+            match Self::execute_search_cascade(&task.objective, config).await {
+                Ok(result) => {
+                    // Check if we got meaningful results
+                    if !result.findings.is_empty() && result.findings.len() > 100 {
+                        info!(
+                            task_id = %task_id,
+                            source_count = result.sources.len(),
+                            "Search cascade returned results"
+                        );
+                        return Ok(LiteratureResult {
+                            task_id,
+                            objective: task.objective.clone(),
+                            findings: result.findings,
+                            sources: result.sources,
+                            key_insights: result.key_insights,
+                        });
+                    }
+                    warn!("Search cascade returned insufficient results, falling back to LLM");
+                }
+                Err(e) => {
+                    warn!(error = %e, "Search cascade failed, falling back to LLM");
+                }
+            }
+        } else {
+            info!("SerpAPI not configured, using LLM knowledge directly");
+        }
+
+        // Fallback to LLM knowledge
+        Self::execute_llm_search(&task_id, task, config).await
+    }
+
+    /// Execute search using SerpAPI cascade (Scholar first, then Light)
+    async fn execute_search_cascade(
+        query: &str,
+        config: &crate::config::Config,
+    ) -> Result<SearchCascadeResult> {
+        let client = SerpApiClient::from_config(&config.search)
+            .ok_or_else(|| anyhow::anyhow!("SerpAPI not configured"))?;
+
+        let search_results = client.search_combined(query).await;
+
+        // Build findings and sources from search results
+        let mut findings = String::new();
+        let mut sources = Vec::new();
+        let mut key_insights = Vec::new();
+
+        // Process Scholar results (primary - academic sources)
+        if !search_results.scholar_results.is_empty() {
+            findings.push_str("## Academic Research Findings\n\n");
+            
+            for (i, result) in search_results.scholar_results.iter().enumerate() {
+                // Add to findings narrative
+                findings.push_str(&format!(
+                    "**{}. {}**\n",
+                    i + 1,
+                    result.title
+                ));
+                
+                if !result.snippet.is_empty() {
+                    findings.push_str(&format!("{}\n", result.snippet));
+                }
+
+                if let Some(ref authors) = result.authors {
+                    findings.push_str(&format!("*Authors: {}*", authors));
+                }
+                if let Some(year) = result.year {
+                    findings.push_str(&format!(" ({}) ", year));
+                }
+                if let Some(citations) = result.citations {
+                    findings.push_str(&format!("[Cited by {}]", citations));
+                }
+                findings.push_str("\n\n");
+
+                // Add to sources
+                sources.push(SourceReference {
+                    title: result.title.clone(),
+                    authors: result.authors.clone(),
+                    year: result.year,
+                    doi: result.doi.clone(),
+                    url: result.link.clone(),
+                    summary: result.snippet.clone(),
+                });
+
+                // Extract key insights from highly-cited papers
+                if result.citations.unwrap_or(0) > 50 && key_insights.len() < 5 {
+                    let insight = if result.snippet.len() > 100 {
+                        format!("{}: {}", result.title, &result.snippet[..100])
+                    } else {
+                        format!("{}: {}", result.title, result.snippet)
+                    };
+                    key_insights.push(insight);
+                }
+            }
+        }
+
+        // Process Light results (secondary - reliable web sources)
+        if !search_results.light_results.is_empty() {
+            if !findings.is_empty() {
+                findings.push_str("\n---\n\n");
+            }
+            findings.push_str("## Additional Research Context\n\n");
+
+            for result in search_results.light_results.iter().take(5) {
+                findings.push_str(&format!("**{}**\n", result.title));
+                findings.push_str(&format!("{}\n", result.snippet));
+                if let Some(ref source) = result.source {
+                    findings.push_str(&format!("*Source: {}*\n", source));
+                }
+                findings.push_str("\n");
+
+                // Add supplementary sources
+                sources.push(SourceReference {
+                    title: result.title.clone(),
+                    authors: None,
+                    year: None,
+                    doi: None,
+                    url: Some(result.link.clone()),
+                    summary: result.snippet.clone(),
+                });
+            }
+        }
+
+        // Generate insights if we don't have enough from citations
+        if key_insights.is_empty() && !sources.is_empty() {
+            for source in sources.iter().take(3) {
+                if !source.summary.is_empty() {
+                    key_insights.push(source.summary.clone());
+                }
+            }
+        }
+
+        Ok(SearchCascadeResult {
+            findings,
+            sources,
+            key_insights,
+        })
+    }
+
+    /// Execute literature search using LLM knowledge (fallback)
+    async fn execute_llm_search(
+        task_id: &str,
+        task: &PlanTask,
+        config: &crate::config::Config,
+    ) -> AppResult<LiteratureResult> {
         // Get LLM provider configuration
         let api_key = match config.llm.active_api_key() {
             Some(key) => key,
@@ -109,7 +267,7 @@ impl LiteratureAgent {
                 match Self::parse_literature_response(&response.content, task) {
                     Ok(result) => {
                         info!(
-                            task_id = %result.task_id,
+                            task_id = %task_id,
                             source_count = result.sources.len(),
                             insight_count = result.key_insights.len(),
                             "Literature search completed successfully"
@@ -122,7 +280,7 @@ impl LiteratureAgent {
                         // This sanitizes any raw JSON to prevent it from being displayed
                         let sanitized_findings = Self::extract_text_from_response(&response.content);
                         Ok(LiteratureResult {
-                            task_id,
+                            task_id: task_id.to_string(),
                             objective: task.objective.clone(),
                             findings: sanitized_findings,
                             sources: vec![],

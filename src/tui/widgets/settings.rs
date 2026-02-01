@@ -46,7 +46,7 @@ pub fn render_settings(frame: &mut Frame, app: &App) {
 fn render_instructions(frame: &mut Frame, area: Rect) {
     let lines = vec![
         Line::from(Span::styled(
-            "Configure your LLM API keys. Keys are encrypted and stored locally.",
+            "Configure your API keys (LLM + Search). Keys are encrypted locally.",
             Theme::text(),
         )),
         Line::from(vec![

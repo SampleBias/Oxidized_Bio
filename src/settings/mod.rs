@@ -71,6 +71,20 @@ fn default_true() -> bool {
     true
 }
 
+/// Search API configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchApiConfig {
+    /// SerpAPI key for Google Scholar and Google Light searches
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serpapi_key: Option<String>,
+    /// Enable Google Scholar search (primary)
+    #[serde(default = "default_true")]
+    pub scholar_enabled: bool,
+    /// Enable Google Light search (secondary)
+    #[serde(default = "default_true")]
+    pub light_enabled: bool,
+}
+
 /// User settings structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSettings {
@@ -97,6 +111,10 @@ pub struct UserSettings {
     /// Groq configuration
     #[serde(default)]
     pub groq: ProviderConfig,
+    
+    /// Search API configuration (SerpAPI)
+    #[serde(default)]
+    pub search: SearchApiConfig,
     
     /// Theme preference
     #[serde(default)]
@@ -140,6 +158,11 @@ impl Default for UserSettings {
                 api_key: None,
                 default_model: Some("groq/compound".to_string()),
                 enabled: true,
+            },
+            search: SearchApiConfig {
+                serpapi_key: None,
+                scholar_enabled: true,
+                light_enabled: true,
             },
             theme: Theme::Dark,
         }

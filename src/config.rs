@@ -8,6 +8,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub redis: RedisConfig,
     pub llm: LLMConfig,
+    pub search: SearchConfig,
     pub storage: StorageConfig,
     pub auth: AuthConfig,
     pub payment: PaymentConfig,
@@ -59,6 +60,25 @@ impl LLMConfig {
         } else {
             Some(key.to_string())
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchConfig {
+    /// SerpAPI key for Google Scholar and Google Light searches
+    pub serpapi_key: String,
+    /// Enable Google Scholar search (primary)
+    pub scholar_enabled: bool,
+    /// Enable Google Light search (secondary/fallback)
+    pub light_enabled: bool,
+    /// Maximum results per search
+    pub max_results: usize,
+}
+
+impl SearchConfig {
+    /// Check if SerpAPI is configured and available
+    pub fn serpapi_available(&self) -> bool {
+        !self.serpapi_key.is_empty() && (self.scholar_enabled || self.light_enabled)
     }
 }
 
@@ -132,6 +152,21 @@ impl Config {
                 groq_api_key: env::var("GROQ_API_KEY").unwrap_or_default(),
                 default_provider: env::var("REPLY_LLM_PROVIDER").unwrap_or_else(|_| "openai".to_string()),
                 default_model: env::var("REPLY_LLM_MODEL").unwrap_or_else(|_| "gpt-4".to_string()),
+            },
+            search: SearchConfig {
+                serpapi_key: env::var("SERPAPI_KEY").unwrap_or_default(),
+                scholar_enabled: env::var("SERPAPI_SCHOLAR_ENABLED")
+                    .unwrap_or_else(|_| "true".to_string())
+                    .parse()
+                    .unwrap_or(true),
+                light_enabled: env::var("SERPAPI_LIGHT_ENABLED")
+                    .unwrap_or_else(|_| "true".to_string())
+                    .parse()
+                    .unwrap_or(true),
+                max_results: env::var("SERPAPI_MAX_RESULTS")
+                    .unwrap_or_else(|_| "10".to_string())
+                    .parse()
+                    .unwrap_or(10),
             },
             storage: StorageConfig {
                 provider: env::var("STORAGE_PROVIDER").unwrap_or_else(|_| "s3".to_string()),

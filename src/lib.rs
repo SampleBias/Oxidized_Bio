@@ -6,6 +6,7 @@ pub mod models;
 pub mod types;
 pub mod agents;
 pub mod llm;
+pub mod search;    // Search APIs (SerpAPI for Google Scholar and Light)
 pub mod embeddings;
 pub mod storage;
 pub mod routes;
