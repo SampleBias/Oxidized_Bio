@@ -139,7 +139,6 @@ impl SettingsStorage {
         self.decrypt_provider_key(&mut settings.anthropic, &key)?;
         self.decrypt_provider_key(&mut settings.google, &key)?;
         self.decrypt_provider_key(&mut settings.openrouter, &key)?;
-        self.decrypt_provider_key(&mut settings.glm, &key)?;
         
         info!("Loaded settings from {:?}", self.settings_path);
         Ok(settings)
@@ -156,7 +155,6 @@ impl SettingsStorage {
         self.encrypt_provider_key(&mut encrypted_settings.anthropic, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.google, &key)?;
         self.encrypt_provider_key(&mut encrypted_settings.openrouter, &key)?;
-        self.encrypt_provider_key(&mut encrypted_settings.glm, &key)?;
         
         let content = serde_json::to_string_pretty(&encrypted_settings)?;
         fs::write(&self.settings_path, content).await?;
@@ -197,7 +195,6 @@ impl SettingsStorage {
             "anthropic" => settings.anthropic.api_key,
             "google" => settings.google.api_key,
             "openrouter" => settings.openrouter.api_key,
-            "glm" => settings.glm.api_key,
             _ => None,
         };
         Ok(key)
@@ -222,7 +219,7 @@ mod tests {
         
         let mut settings = UserSettings::default();
         settings.openai.api_key = Some("sk-test-key-12345".to_string());
-        settings.glm.api_key = Some("glm-key-67890".to_string());
+        settings.anthropic.api_key = Some("sk-ant-key-67890".to_string());
         
         // Save
         storage.save(&settings).await.unwrap();
@@ -231,7 +228,7 @@ mod tests {
         let loaded = storage.load().await.unwrap();
         
         assert_eq!(loaded.openai.api_key, Some("sk-test-key-12345".to_string()));
-        assert_eq!(loaded.glm.api_key, Some("glm-key-67890".to_string()));
+        assert_eq!(loaded.anthropic.api_key, Some("sk-ant-key-67890".to_string()));
     }
 
     #[tokio::test]

@@ -210,26 +210,6 @@ impl App {
                     .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
             },
             ProviderField {
-                id: "glm",
-                name: "GLM (General API)",
-                has_key: settings.glm.api_key.is_some(),
-                key_hint: settings
-                    .glm
-                    .api_key
-                    .as_ref()
-                    .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
-            },
-            ProviderField {
-                id: "glm-coding",
-                name: "GLM (Coding Plan)",
-                has_key: settings.glm.api_key.is_some(), // Uses same API key as GLM
-                key_hint: settings
-                    .glm
-                    .api_key
-                    .as_ref()
-                    .map(|k| format!("••••{}", &k[k.len().saturating_sub(4)..])),
-            },
-            ProviderField {
                 id: "openrouter",
                 name: "OpenRouter",
                 has_key: settings.openrouter.api_key.is_some(),
@@ -440,7 +420,6 @@ impl App {
         let has_api_key = self.settings.openai.api_key.is_some()
             || self.settings.anthropic.api_key.is_some()
             || self.settings.google.api_key.is_some()
-            || self.settings.glm.api_key.is_some()
             || self.settings.openrouter.api_key.is_some();
 
         if !has_api_key {
@@ -574,7 +553,6 @@ impl App {
             self.settings.anthropic.api_key.clone().unwrap_or_default();
         self.config.llm.google_api_key =
             self.settings.google.api_key.clone().unwrap_or_default();
-        self.config.llm.glm_api_key = self.settings.glm.api_key.clone().unwrap_or_default();
         self.config.llm.openrouter_api_key =
             self.settings.openrouter.api_key.clone().unwrap_or_default();
         
@@ -593,9 +571,6 @@ impl App {
                 .unwrap_or_else(|| "gemini-2.0-flash".to_string()),
             Provider::OpenRouter => self.settings.openrouter.default_model.clone()
                 .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
-            // Both GLM providers use the same model names, just different API endpoints
-            Provider::GLM | Provider::GLMCoding => self.settings.glm.default_model.clone()
-                .unwrap_or_else(|| "glm-4.7".to_string()),
         };
     }
 

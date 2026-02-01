@@ -19,12 +19,6 @@ pub enum Provider {
     Anthropic,
     Google,
     OpenRouter,
-    /// GLM General API (https://api.z.ai/api/paas/v4) - works without subscription
-    #[serde(rename = "glm")]
-    GLM,
-    /// GLM Coding API (https://api.z.ai/api/coding/paas/v4) - requires Coding Plan subscription
-    #[serde(rename = "glm-coding")]
-    GLMCoding,
 }
 
 impl Default for Provider {
@@ -40,8 +34,6 @@ impl std::fmt::Display for Provider {
             Provider::Anthropic => write!(f, "anthropic"),
             Provider::Google => write!(f, "google"),
             Provider::OpenRouter => write!(f, "openrouter"),
-            Provider::GLM => write!(f, "glm"),
-            Provider::GLMCoding => write!(f, "glm-coding"),
         }
     }
 }
@@ -53,8 +45,6 @@ impl Provider {
             "anthropic" => Some(Provider::Anthropic),
             "google" => Some(Provider::Google),
             "openrouter" => Some(Provider::OpenRouter),
-            "glm" | "glm-general" => Some(Provider::GLM),
-            "glm-coding" => Some(Provider::GLMCoding),
             _ => None,
         }
     }
@@ -101,10 +91,6 @@ pub struct UserSettings {
     #[serde(default)]
     pub openrouter: ProviderConfig,
     
-    /// GLM (Zhipu AI) configuration
-    #[serde(default)]
-    pub glm: ProviderConfig,
-    
     /// Theme preference
     #[serde(default)]
     pub theme: Theme,
@@ -143,11 +129,6 @@ impl Default for UserSettings {
                 default_model: None,
                 enabled: true,
             },
-            glm: ProviderConfig {
-                api_key: None,
-                default_model: Some("glm-4.7".to_string()),
-                enabled: true,
-            },
             theme: Theme::Dark,
         }
     }
@@ -159,7 +140,6 @@ impl UserSettings {
         self.anthropic.api_key = None;
         self.google.api_key = None;
         self.openrouter.api_key = None;
-        self.glm.api_key = None;
     }
 
     pub fn set_single_provider_key(&mut self, provider_id: &str, key: String) {
@@ -169,8 +149,6 @@ impl UserSettings {
             "anthropic" => self.anthropic.api_key = Some(key),
             "google" => self.google.api_key = Some(key),
             "openrouter" => self.openrouter.api_key = Some(key),
-            // Both glm and glm-coding use the same API key
-            "glm" | "glm-coding" => self.glm.api_key = Some(key),
             _ => {}
         }
 
@@ -193,9 +171,6 @@ impl UserSettings {
         if self.openrouter.api_key.is_some() {
             providers_with_keys.push("openrouter");
         }
-        if self.glm.api_key.is_some() {
-            providers_with_keys.push("glm");
-        }
 
         if providers_with_keys.len() <= 1 {
             return;
@@ -213,7 +188,6 @@ impl UserSettings {
             "anthropic" => self.anthropic.api_key.take(),
             "google" => self.google.api_key.take(),
             "openrouter" => self.openrouter.api_key.take(),
-            "glm" => self.glm.api_key.take(),
             _ => None,
         };
 
@@ -232,7 +206,6 @@ pub struct SettingsResponse {
     pub anthropic: ProviderStatus,
     pub google: ProviderStatus,
     pub openrouter: ProviderStatus,
-    pub glm: ProviderStatus,
     pub theme: Theme,
 }
 
@@ -277,7 +250,6 @@ impl From<&UserSettings> for SettingsResponse {
             anthropic: ProviderStatus::from(&settings.anthropic),
             google: ProviderStatus::from(&settings.google),
             openrouter: ProviderStatus::from(&settings.openrouter),
-            glm: ProviderStatus::from(&settings.glm),
             theme: settings.theme.clone(),
         }
     }
@@ -308,11 +280,6 @@ pub struct UpdateSettingsRequest {
     pub openrouter_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub openrouter_model: Option<String>,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub glm_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub glm_model: Option<String>,
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<Theme>,

@@ -126,18 +126,6 @@ async fn update_settings(
         settings.openrouter.default_model = Some(model);
     }
     
-    // Update GLM
-    if let Some(key) = request.glm_key {
-        if key.is_empty() {
-            settings.glm.api_key = None;
-        } else {
-            provided_keys.push(("glm", key));
-        }
-    }
-    if let Some(model) = request.glm_model {
-        settings.glm.default_model = Some(model);
-    }
-    
     // Update theme
     if let Some(theme) = request.theme {
         settings.theme = theme;
@@ -242,42 +230,6 @@ async fn list_providers() -> impl IntoResponse {
             ],
             docs_url: Some("https://ai.google.dev/docs".to_string()),
         },
-        // GLM General API - for general use and vision models
-        // Endpoint: https://api.z.ai/api/paas/v4
-        ProviderInfo {
-            id: "glm".to_string(),
-            name: "GLM (Z.AI General API)".to_string(),
-            description: "General API for GLM models and vision. Use 'glm-coding' for Coding Plan.".to_string(),
-            models: vec![
-                // GLM-4.7 Series - Text models (200K context, 128K output)
-                ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Flagship)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.7-flashx".to_string(), name: "GLM-4.7-FlashX (Fast)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.7-flash".to_string(), name: "GLM-4.7-Flash (Free)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-                // GLM-4.6V Series - Vision/Multimodal models (128K context)
-                ModelInfo { id: "glm-4.6v".to_string(), name: "GLM-4.6V (Vision Flagship)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
-                ModelInfo { id: "glm-4.6v-flashx".to_string(), name: "GLM-4.6V-FlashX (Vision Fast)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
-                ModelInfo { id: "glm-4.6v-flash".to_string(), name: "GLM-4.6V-Flash (Vision Free)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
-                // Previous generation models
-                ModelInfo { id: "glm-4.6".to_string(), name: "GLM-4.6".to_string(), context_length: Some(128000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.5".to_string(), name: "GLM-4.5 (Open Source)".to_string(), context_length: Some(128000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.5v".to_string(), name: "GLM-4.5V (Vision)".to_string(), context_length: Some(128000), supports_vision: Some(true) },
-            ],
-            docs_url: Some("https://docs.z.ai/guides/overview/quick-start".to_string()),
-        },
-        // GLM Coding API - requires GLM Coding Plan subscription
-        // Endpoint: https://api.z.ai/api/coding/paas/v4
-        ProviderInfo {
-            id: "glm-coding".to_string(),
-            name: "GLM (Z.AI Coding Plan)".to_string(),
-            description: "Coding API for GLM-4.7. Requires GLM Coding Plan subscription ($3/month).".to_string(),
-            models: vec![
-                // Only text models available on Coding API
-                ModelInfo { id: "glm-4.7".to_string(), name: "GLM-4.7 (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.7-flashx".to_string(), name: "GLM-4.7-FlashX (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-                ModelInfo { id: "glm-4.7-flash".to_string(), name: "GLM-4.7-Flash (Coding)".to_string(), context_length: Some(200000), supports_vision: Some(false) },
-            ],
-            docs_url: Some("https://docs.z.ai/devpack/overview".to_string()),
-        },
         ProviderInfo {
             id: "openrouter".to_string(),
             name: "OpenRouter".to_string(),
@@ -328,7 +280,6 @@ async fn test_provider(
         "openai" => test_openai(&api_key).await,
         "anthropic" => test_anthropic(&api_key).await,
         "google" => test_google(&api_key).await,
-        "glm" => test_glm(&api_key).await,
         "openrouter" => test_openrouter(&api_key).await,
         _ => Err(format!("Unknown provider: {}", provider)),
     };
@@ -408,26 +359,6 @@ async fn test_google(api_key: &str) -> Result<String, String> {
 
     if response.status().is_success() {
         Ok("Google AI API key is valid".to_string())
-    } else {
-        Err(format!("API returned error: {}", response.status()))
-    }
-}
-
-async fn test_glm(api_key: &str) -> Result<String, String> {
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://api.z.ai/api/paas/v4/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("content-type", "application/json")
-        .body(r#"{"model":"glm-4.5","messages":[{"role":"user","content":"Hi"}],"max_tokens":1}"#)
-        .send()
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
-
-    if response.status().is_success() {
-        Ok("GLM API key is valid".to_string())
-    } else if response.status().as_u16() == 401 {
-        Err("Invalid API key".to_string())
     } else {
         Err(format!("API returned error: {}", response.status()))
     }
