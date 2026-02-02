@@ -80,17 +80,7 @@ Oxidized Bio implements a sophisticated multi-agent architecture:
 git clone https://github.com/your-username/oxidized-bio.git
 cd oxidized-bio
 
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your configuration
-# Required: DATABASE_URL, BIOAGENTS_SECRET
-# Optional: API keys for various services
-
-# Run migrations
-cargo run --bin oxidized-bio migrate
-
-# Start the server
+# Start the TUI (single-user mode, no database required)
 cargo run
 ```
 
@@ -127,19 +117,9 @@ X402_ENVIRONMENT=testnet
 X402_PAYMENT_ADDRESS=...
 ```
 
-### Database Setup
-
-```bash
-# Install PostgreSQL and pgvector
-sudo apt install postgresql postgresql-contrib
-# Add pgvector: https://github.com/pgvector/pgvector
-
-# Create database
-createdb oxidized_bio
-
-# Run migrations
-cargo run --bin oxidized-bio migrate
-```
+### Database Setup (Not required for TUI)
+The current build is **TUI-only** and does not require a database.  
+If you need multi-user server mode, that would be a separate build.
 
 ## 📖 API Documentation
 
@@ -201,6 +181,21 @@ Content-Type: multipart/form-data
 file: [binary data]
 ```
 
+#### TUI (Recommended for single-user workflows)
+Run the TUI and use slash commands to load local files and analyze without a database:
+```
+oxidized-bio
+```
+
+Slash commands:
+```
+/help
+/upload /path/to/data.csv
+/list
+/use <dataset_id>
+/analyze [dataset_id] [target=age] [group=cell_type] [box=marker_1] [cov=batch,sex]
+```
+
 #### Data Analysis
 ```http
 POST /api/analysis
@@ -216,6 +211,14 @@ Content-Type: application/json
   "max_groups": 20
 }
 ```
+
+**Analysis output includes:**
+- Descriptive statistics
+- Linear regression results
+- Novelty scores
+- Biomarker candidates ranked by correlation with target
+- A manuscript-style scientific summary with a project ID
+- Artifact files (CSV + PNG plots)
 
 ### Payment-Gated Endpoints (x402/b402)
 

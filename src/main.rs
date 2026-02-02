@@ -2,40 +2,23 @@
 //!
 //! A high-performance AI agent framework for biological and scientific research.
 //!
-//! # Running Modes
+//! # Running Mode
 //!
 //! - **TUI Mode** (default): Interactive terminal interface
 //!   ```bash
 //!   oxidized-bio
 //!   ```
-//!
-//! - **Server Mode**: HTTP API server
-//!   ```bash
-//!   oxidized-bio --server
-//!   oxidized-bio --server --port 8080
-//!   ```
 
 use clap::Parser;
-use std::net::SocketAddr;
-use tokio::net::TcpListener;
-use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use oxidized_bio::{config::Config, routes::create_router, tui};
+use oxidized_bio::{config::Config, tui};
 
 /// Oxidized Bio - AI Research Agent for biological and scientific research
 #[derive(Parser, Debug)]
 #[command(name = "oxidized-bio")]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Run as HTTP API server instead of TUI
-    #[arg(short, long)]
-    server: bool,
-
-    /// Server port (only with --server)
-    #[arg(short, long, default_value_t = 3000)]
-    port: u16,
-
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -52,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     // IMPORTANT: In TUI mode, we must NOT write logs to stdout/stderr as it corrupts
     // the alternate screen display. Instead, we either write to a log file or disable
     // logging entirely.
-    if cli.server || cli.verbose {
+    if cli.verbose {
         // Server/verbose mode - write logs to stdout
         let log_level = if cli.verbose {
             "oxidized_bio=debug,tower_http=debug,axum=debug"
@@ -98,29 +81,25 @@ async fn main() -> anyhow::Result<()> {
                     tracing_subscriber::registry()
                         .with(
                             tracing_subscriber::EnvFilter::try_from_default_env()
-                                .unwrap_or_else(|_| "oxidized_bio=info".into()),
-                        )
-                        .with(file_layer)
-                        .init();
-                }
-                Err(_) => {
-                    // Fall back to no logging if file creation fails
-                    tracing_subscriber::registry()
-                        .with(tracing_subscriber::EnvFilter::new("off"))
-                        .init();
-                }
+                    .unwrap_or_else(|_| "oxidized_bio=info".into()),
+                )
+                .with(file_layer)
+                .init();
+            }
+            Err(_) => {
+                // Fall back to no logging if file creation fails
+                tracing_subscriber::registry()
+                    .with(tracing_subscriber::EnvFilter::new("off"))
+                    .init();
             }
         }
+    }
     }
 
     // Load configuration
     let config = Config::from_env()?;
 
-    if cli.server {
-        run_server(config, cli.port).await
-    } else {
-        run_tui(config).await
-    }
+    run_tui(config).await
 }
 
 /// Run in TUI mode (default)
@@ -140,52 +119,4 @@ async fn run_tui(config: Config) -> anyhow::Result<()> {
     result
 }
 
-/// Run in HTTP server mode
-async fn run_server(config: Config, port: u16) -> anyhow::Result<()> {
-    info!("Starting Oxidized Bio server...");
-    info!("Configuration loaded: {:?}", config.server);
-
-    // Check if DATABASE_URL is configured
-    if config.database.url.is_empty() {
-        error!("DATABASE_URL is required for server mode");
-        error!("Set DATABASE_URL environment variable, e.g.:");
-        error!("  DATABASE_URL=postgresql://user:pass@localhost:5432/oxidized_bio");
-        error!("");
-        error!("Or use TUI mode (no database required): oxidized-bio");
-        return Err(anyhow::anyhow!(
-            "DATABASE_URL is required for server mode. Use TUI mode for database-free operation."
-        ));
-    }
-
-    // Connect to database
-    let pool = oxidized_bio::db::create_pool(&config.database).await?;
-
-    // Run migrations
-    info!("Running database migrations...");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
-    info!("Database migrations completed");
-
-    // Create shared state
-    let state = oxidized_bio::AppState {
-        pool,
-        config: config.clone(),
-        dataset_registry: oxidized_bio::data_registry::DatasetRegistry::default(),
-    };
-
-    // Create router
-    let app = create_router(state);
-
-    // Start server
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Server listening on {}", addr);
-
-    let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
-
-    Ok(())
-}
+// Server mode removed. This build runs as a single-user TUI application.

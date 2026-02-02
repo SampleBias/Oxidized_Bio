@@ -30,4 +30,9 @@ impl DatasetRegistry {
         let guard = self.inner.read().await;
         guard.get(dataset_id).cloned()
     }
+
+    pub async fn snapshot(&self) -> Vec<DatasetRecord> {
+        let guard = self.inner.read().await;
+        guard.values().cloned().collect()
+    }
 }

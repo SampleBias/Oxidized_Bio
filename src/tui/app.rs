@@ -3,7 +3,10 @@
 //! Contains the main application state and logic for the TUI.
 
 use crate::agents::{self, LiteratureResult, PlanningResult};
+use crate::analysis::{AnalysisConfig, build_manuscript, run_analysis};
 use crate::config::Config;
+use crate::data_registry::{DatasetRecord, DatasetRegistry};
+use crate::models::UploadedDataset;
 use crate::settings::{SettingsStorage, UserSettings};
 use crate::tui::event::AppAction;
 use chrono::{DateTime, Utc};
@@ -12,6 +15,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use tui_textarea::TextArea;
+use uuid::Uuid;
 
 /// Research pipeline stage
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +143,10 @@ pub struct App {
     // Async communication
     event_rx: Option<mpsc::Receiver<AppEvent>>,
     event_tx: Option<mpsc::Sender<AppEvent>>,
+
+    // Local dataset state for TUI workflows
+    pub dataset_registry: DatasetRegistry,
+    pub last_dataset_id: Option<String>,
 }
 
 impl App {
@@ -198,6 +206,8 @@ impl App {
             spinner_index: 0,
             event_rx: Some(rx),
             event_tx: Some(tx),
+            dataset_registry: DatasetRegistry::default(),
+            last_dataset_id: None,
         };
 
         app.update_config_from_settings();
@@ -219,7 +229,7 @@ impl App {
         app.messages[0].content = format!(
             "Welcome to Oxidized Bio Research Agent!\n\n\
              API Status: {} | {}\n\n\
-             Type a research question below to get started.\n\
+             Type a research question below or /help for commands.\n\
              Press Ctrl+S to configure your API keys in Settings.",
             llm_status_str, search_status_str
         );
@@ -545,7 +555,7 @@ impl App {
 
         // Clear input
         self.input = TextArea::default();
-        self.input.set_placeholder_text("Type your research question here...");
+        self.input.set_placeholder_text("Type a question or /help for commands...");
 
         // Add user message
         self.messages.push(ChatMessage {
@@ -553,6 +563,11 @@ impl App {
             content: content.clone(),
             timestamp: Utc::now(),
         });
+
+        if self.handle_slash_command(&content).await {
+            self.scroll_to_bottom();
+            return;
+        }
 
         // Check if any API key is configured (in settings)
         let has_llm_key = self.settings.openai.api_key.is_some()
@@ -603,6 +618,274 @@ impl App {
         });
 
         self.scroll_to_bottom();
+    }
+
+    async fn handle_slash_command(&mut self, content: &str) -> bool {
+        if !content.starts_with('/') {
+            return false;
+        }
+
+        let mut parts = content.split_whitespace();
+        let cmd = parts.next().unwrap_or("");
+        match cmd {
+            "/help" => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Commands:\n\
+/upload <path> [description]\n\
+/list (list loaded datasets)\n\
+/use <dataset_id>\n\
+/analyze [dataset_id] [target=age] [group=cell_type] [box=marker_1] [cov=batch,sex]\n\
+Tip: run /upload first, then /analyze."
+                        .to_string(),
+                    timestamp: Utc::now(),
+                });
+                return true;
+            }
+            "/upload" => {
+                let path = parts.next();
+                if path.is_none() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /upload <path> [description]".to_string(),
+                        timestamp: Utc::now(),
+                    });
+                    return true;
+                }
+                let description = parts.collect::<Vec<_>>().join(" ");
+                match self
+                    .load_dataset_from_path(
+                        path.unwrap(),
+                        if description.is_empty() { None } else { Some(description) },
+                    )
+                    .await
+                {
+                    Ok(record) => {
+                        self.last_dataset_id = Some(record.dataset.id.clone());
+                        self.dataset_registry.insert(record.clone()).await;
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "Dataset loaded: {}\nRows: {} | Columns: {}\nID: {}",
+                                record.dataset.filename,
+                                record.row_count,
+                                record.columns.len(),
+                                record.dataset.id
+                            ),
+                            timestamp: Utc::now(),
+                        });
+                    }
+                    Err(e) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("Upload failed: {}", e),
+                            timestamp: Utc::now(),
+                        });
+                    }
+                }
+                return true;
+            }
+            "/list" => {
+                let mut list = String::new();
+                if let Some(last_id) = &self.last_dataset_id {
+                    list.push_str(&format!("Active dataset: {}\n", last_id));
+                }
+                let datasets = self.dataset_registry.snapshot().await;
+                if datasets.is_empty() {
+                    list.push_str("No datasets loaded.");
+                } else {
+                    for record in datasets {
+                        list.push_str(&format!(
+                            "- {} ({}, rows: {})\n",
+                            record.dataset.id,
+                            record.dataset.filename,
+                            record.row_count
+                        ));
+                    }
+                }
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: list,
+                    timestamp: Utc::now(),
+                });
+                return true;
+            }
+            "/use" => {
+                if let Some(id) = parts.next() {
+                    self.last_dataset_id = Some(id.to_string());
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Active dataset set to {}", id),
+                        timestamp: Utc::now(),
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /use <dataset_id>".to_string(),
+                        timestamp: Utc::now(),
+                    });
+                }
+                return true;
+            }
+            "/analyze" => {
+                let dataset_id = parts
+                    .next()
+                    .map(|s| s.to_string())
+                    .or_else(|| self.last_dataset_id.clone());
+                if dataset_id.is_none() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /analyze <dataset_id> [target=age] [group=cell_type] [box=marker_1] [cov=batch,sex]".to_string(),
+                        timestamp: Utc::now(),
+                    });
+                    return true;
+                }
+                let mut target = "age".to_string();
+                let mut group = "cell_type".to_string();
+                let mut boxplot = None;
+                let mut covariates: Vec<String> = Vec::new();
+                for part in parts {
+                    if let Some((k, v)) = part.split_once('=') {
+                        match k {
+                            "target" => target = v.to_string(),
+                            "group" => group = v.to_string(),
+                            "box" => boxplot = Some(v.to_string()),
+                            "cov" => {
+                                covariates = v
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                let dataset_id = dataset_id.unwrap();
+                match self.dataset_registry.get(&dataset_id).await {
+                    Some(record) => {
+                        let output_dir = std::path::Path::new("artifacts")
+                            .join("analysis")
+                            .join(&dataset_id);
+                        if let Err(e) = tokio::fs::create_dir_all(&output_dir).await {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Failed to create artifacts dir: {}", e),
+                                timestamp: Utc::now(),
+                            });
+                            return true;
+                        }
+                        let config = AnalysisConfig {
+                            target_column: Some(target.clone()),
+                            group_column: Some(group.clone()),
+                            covariates,
+                            boxplot_column: boxplot,
+                            max_columns: 50,
+                            max_groups: 20,
+                        };
+                        match run_analysis(&record, &config, &output_dir) {
+                            Ok(result) => {
+                                let manuscript = build_manuscript(
+                                    &dataset_id,
+                                    &target,
+                                    &group,
+                                    &record,
+                                    &result,
+                                );
+                                let top = result
+                                    .biomarker_candidates
+                                    .iter()
+                                    .take(10)
+                                    .map(|b| format!("- {} (r={:.3})", b.column, b.correlation))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                self.messages.push(ChatMessage {
+                                    role: MessageRole::Assistant,
+                                    content: format!("{}\n\nTop biomarkers:\n{}", manuscript, top),
+                                    timestamp: Utc::now(),
+                                });
+                            }
+                            Err(e) => {
+                                self.messages.push(ChatMessage {
+                                    role: MessageRole::System,
+                                    content: format!("Analysis failed: {}", e),
+                                    timestamp: Utc::now(),
+                                });
+                            }
+                        }
+                    }
+                    None => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("Dataset not found: {}", dataset_id),
+                            timestamp: Utc::now(),
+                        });
+                    }
+                }
+                return true;
+            }
+            _ => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Unknown command: {}", cmd),
+                    timestamp: Utc::now(),
+                });
+                return true;
+            }
+        }
+    }
+
+    async fn load_dataset_from_path(
+        &self,
+        path: &str,
+        description: Option<String>,
+    ) -> Result<DatasetRecord, String> {
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if extension != "csv" && extension != "tsv" {
+            return Err("Only .csv or .tsv files are supported.".to_string());
+        }
+        let delimiter = if extension == "tsv" { b'\t' } else { b',' };
+        let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+        let dataset_id = Uuid::new_v4().to_string();
+        let upload_dir = std::path::Path::new("uploads");
+        tokio::fs::create_dir_all(upload_dir)
+            .await
+            .map_err(|e| e.to_string())?;
+        let filename = std::path::Path::new(path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("dataset.csv")
+            .to_string();
+        let stored_name = format!("{}-{}", dataset_id, filename);
+        let local_path = upload_dir.join(&stored_name);
+        tokio::fs::write(&local_path, &bytes)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let (columns, row_count) = infer_csv_metadata(&bytes, delimiter)?;
+
+        let dataset = UploadedDataset {
+            filename: filename.clone(),
+            id: dataset_id.clone(),
+            description: description.unwrap_or_else(|| format!("Uploaded dataset {}", filename)),
+            path: Some(local_path.to_string_lossy().to_string()),
+            content: None,
+            size: Some(bytes.len() as i64),
+        };
+
+        Ok(DatasetRecord {
+            dataset,
+            local_path: local_path.to_string_lossy().to_string(),
+            content_type: "text/plain".to_string(),
+            delimiter,
+            has_headers: true,
+            columns,
+            row_count,
+        })
     }
 
     /// Run the research pipeline in background
@@ -813,4 +1096,25 @@ impl App {
         // Update scroll bounds
         self.update_scroll_bounds(content_height, viewport_height);
     }
+}
+
+fn infer_csv_metadata(bytes: &[u8], delimiter: u8) -> Result<(Vec<String>, usize), String> {
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(true)
+        .from_reader(bytes);
+
+    let headers = rdr
+        .headers()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(|h| h.to_string())
+        .collect::<Vec<_>>();
+
+    let mut row_count = 0usize;
+    for record in rdr.records() {
+        record.map_err(|e| e.to_string())?;
+        row_count += 1;
+    }
+    Ok((headers, row_count))
 }

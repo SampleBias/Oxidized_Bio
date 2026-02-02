@@ -7,7 +7,7 @@ use nalgebra::{DMatrix, DVector};
 use plotters::prelude::*;
 
 use crate::data_registry::DatasetRecord;
-use crate::models::{DescriptiveStat, NoveltyScore, RegressionResult};
+use crate::models::{BiomarkerCandidate, DescriptiveStat, NoveltyScore, RegressionResult};
 
 pub struct AnalysisConfig {
     pub target_column: Option<String>,
@@ -22,6 +22,7 @@ pub struct AnalysisArtifacts {
     pub descriptive_stats: Vec<DescriptiveStat>,
     pub regressions: Vec<RegressionResult>,
     pub novelty_scores: Vec<NoveltyScore>,
+    pub biomarker_candidates: Vec<BiomarkerCandidate>,
     pub summary: String,
     pub heatmap_path: Option<String>,
     pub boxplot_path: Option<String>,
@@ -100,6 +101,8 @@ pub fn run_analysis(
     let mut regression_targets: Vec<f64> = Vec::new();
     let mut univariate_x: Vec<Vec<f64>> = vec![Vec::new(); selected_indices.len()];
     let mut univariate_y: Vec<Vec<f64>> = vec![Vec::new(); selected_indices.len()];
+    let mut biomarker_x: Vec<Vec<f64>> = vec![Vec::new(); selected_indices.len()];
+    let mut biomarker_y: Vec<Vec<f64>> = vec![Vec::new(); selected_indices.len()];
 
     let mut boxplot_values: HashMap<String, Vec<f64>> = HashMap::new();
 
@@ -131,6 +134,15 @@ pub fn run_analysis(
 
         if let Some(target_idx) = target_index {
             if let Some(target_val) = record.get(target_idx).and_then(|v| v.parse::<f64>().ok()) {
+                for (pos, col_idx) in selected_indices.iter().enumerate() {
+                    if *col_idx == target_idx {
+                        continue;
+                    }
+                    if let Some(val) = record.get(*col_idx).and_then(|v| v.parse::<f64>().ok()) {
+                        biomarker_x[pos].push(val);
+                        biomarker_y[pos].push(target_val);
+                    }
+                }
                 if covariate_indices.is_empty() {
                     for (pos, col_idx) in selected_indices.iter().enumerate() {
                         if let Some(val) = record.get(*col_idx).and_then(|v| v.parse::<f64>().ok()) {
@@ -189,13 +201,21 @@ pub fn run_analysis(
         &overall_count,
         &group_sums,
     );
+    let biomarker_candidates = build_biomarker_candidates(
+        config.target_column.as_ref(),
+        &headers,
+        &selected_indices,
+        &biomarker_x,
+        &biomarker_y,
+    );
 
     let summary = format!(
         "Computed descriptive statistics for {} columns. Generated {} regression model(s). \
-         Novelty scores computed for {} columns.",
+         Novelty scores computed for {} columns. Biomarker candidates ranked for {} columns.",
         descriptive_stats.len(),
         regressions.len(),
-        novelty_scores.len()
+        novelty_scores.len(),
+        biomarker_candidates.len()
     );
 
     let heatmap_path = if !stats_values.is_empty() {
@@ -221,6 +241,7 @@ pub fn run_analysis(
         descriptive_stats,
         regressions,
         novelty_scores,
+        biomarker_candidates,
         summary,
         heatmap_path,
         boxplot_path,
@@ -393,6 +414,39 @@ fn build_novelty_scores(
     scores
 }
 
+fn build_biomarker_candidates(
+    target: Option<&String>,
+    headers: &[String],
+    selected_indices: &[usize],
+    x_values: &[Vec<f64>],
+    y_values: &[Vec<f64>],
+) -> Vec<BiomarkerCandidate> {
+    let mut candidates = Vec::new();
+    if target.is_none() {
+        return candidates;
+    }
+
+    for (pos, col_idx) in selected_indices.iter().enumerate() {
+        if x_values[pos].len() < 3 || x_values[pos].len() != y_values[pos].len() {
+            continue;
+        }
+        let corr = correlation(&x_values[pos], &y_values[pos]);
+        let score = corr.abs();
+        let direction = if corr >= 0.0 { "positive" } else { "negative" };
+        candidates.push(BiomarkerCandidate {
+            column: headers.get(*col_idx).cloned().unwrap_or_else(|| format!("column_{}", col_idx + 1)),
+            score,
+            correlation: corr,
+            direction: direction.to_string(),
+            notes: "Pearson correlation with target (age). Higher absolute correlation suggests stronger biomarker signal.".to_string(),
+        });
+    }
+
+    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.truncate(50);
+    candidates
+}
+
 pub fn write_heatmap(
     output_path: &Path,
     stats_values: &[Vec<f64>],
@@ -502,6 +556,70 @@ pub fn write_boxplot(
         chart.draw_series(std::iter::once(PathElement::new(vec![(idx_f + 0.5, q1), (idx_f + 0.5, min)], &BLACK)))?;
     }
     Ok(())
+}
+
+pub fn build_manuscript(
+    dataset_id: &str,
+    target: &str,
+    group: &str,
+    record: &crate::data_registry::DatasetRecord,
+    analysis: &AnalysisArtifacts,
+) -> String {
+    let project_id = format!("OXBIO-{}", dataset_id);
+    let top_biomarkers: Vec<String> = analysis
+        .biomarker_candidates
+        .iter()
+        .take(10)
+        .map(|b| format!("{} (r={:.3}, {})", b.column, b.correlation, b.direction))
+        .collect();
+    let top_list = if top_biomarkers.is_empty() {
+        "No biomarker candidates were identified.".to_string()
+    } else {
+        top_biomarkers.join(", ")
+    };
+
+    format!(
+        "Project ID: {project_id}\n\
+Title: Biomarker discovery in log2-normalized microarray data\n\
+\n\
+Abstract\n\
+We analyzed log2-normalized microarray data to identify aging-associated biomarkers. \
+The dataset contained {rows} rows and {cols} columns. Using descriptive statistics, \
+regression modeling, and biomarker ranking by correlation with {target}, we identified \
+candidate biomarkers with the strongest association to aging.\n\
+\n\
+Methods\n\
+Data ingestion validated CSV/TSV structure and inferred column headers. \
+Descriptive statistics were computed per numeric marker. Linear regression models were fit \
+to explain {target} from specified covariates. Biomarker candidates were ranked by Pearson \
+correlation with {target}. Group-level distributions were summarized by {group}. \
+Correlation heatmaps and box plots were generated for exploratory analysis.\n\
+\n\
+Results\n\
+Computed descriptive statistics for {stat_count} markers, regressions for {reg_count} model(s), \
+and novelty scores for {novelty_count} markers. Top biomarker candidates: {top_list}.\n\
+\n\
+Discussion\n\
+Markers with strong correlations to {target} represent candidate aging biomarkers in this \
+dataset. These findings provide a ranked shortlist for downstream validation (e.g., \
+replication cohorts, pathway analysis, or mechanistic experiments). \
+Because the data are already log2-normalized, relative effect sizes are interpretable in \
+log2 space. The correlation-based ranking provides a fast triage; additional modeling \
+and multiple-testing correction are recommended for definitive claims.\n\
+\n\
+Limitations\n\
+The analysis assumes numeric columns are properly normalized and does not perform batch \
+correction or probe re-annotation. Statistical significance testing and biological \
+annotation are not yet included.\n",
+        rows = record.row_count,
+        cols = record.columns.len(),
+        target = target,
+        group = group,
+        stat_count = analysis.descriptive_stats.len(),
+        reg_count = analysis.regressions.len(),
+        novelty_count = analysis.novelty_scores.len(),
+        top_list = top_list
+    )
 }
 
 fn correlation(x: &[f64], y: &[f64]) -> f64 {

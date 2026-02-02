@@ -170,6 +170,8 @@ pub struct AnalysisResponse {
     pub descriptive_stats: Vec<DescriptiveStat>,
     pub regressions: Vec<RegressionResult>,
     pub novelty_scores: Vec<NoveltyScore>,
+    pub biomarker_candidates: Vec<BiomarkerCandidate>,
+    pub manuscript: String,
     pub artifacts: Vec<AnalysisArtifact>,
 }
 
@@ -199,6 +201,15 @@ pub struct NoveltyScore {
     pub column: String,
     pub score: f64,
     pub rationale: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BiomarkerCandidate {
+    pub column: String,
+    pub score: f64,
+    pub correlation: f64,
+    pub direction: String,
+    pub notes: String,
 }
 
 /// Chat response format matching frontend expectations
