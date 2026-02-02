@@ -273,6 +273,11 @@ impl App {
              Paste a dataset path (.csv or .tsv) to begin automated analysis:\n\
              → Upload → Plan → Literature → Findings → Drafts 1-3 → LaTeX\n\n\
              Requirements: Dataset must include Ensembl ID and Age columns.\n\n\
+             Examples:\n\
+             • /home/user/data/microarray.csv\n\
+             • ~/Documents/experiment_data.tsv\n\
+             • ./data/samples.csv\n\n\
+             Tip: You can drag & drop a file into the terminal or use tab completion.\n\n\
              Commands: Type /help for manual commands | Ctrl+S for Settings",
             llm_status_str, search_status_str
         );
@@ -990,22 +995,70 @@ Tip: run /upload first, then /analyze."
         path: &str,
         description: Option<String>,
     ) -> Result<DatasetRecord, String> {
-        let extension = std::path::Path::new(path)
+        // Clean up the path: trim whitespace, expand home directory
+        let path = path.trim();
+        
+        // Expand ~ to home directory
+        let expanded_path = if path.starts_with("~/") {
+            if let Some(home) = dirs::home_dir() {
+                home.join(&path[2..])
+            } else {
+                std::path::PathBuf::from(path)
+            }
+        } else if path == "~" {
+            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(path))
+        } else {
+            std::path::PathBuf::from(path)
+        };
+        
+        // Convert to absolute path if relative
+        let absolute_path = if expanded_path.is_absolute() {
+            expanded_path
+        } else {
+            std::env::current_dir()
+                .map_err(|e| format!("Failed to get current directory: {}", e))?
+                .join(&expanded_path)
+        };
+        
+        // Check if file exists before trying to read
+        if !absolute_path.exists() {
+            return Err(format!(
+                "File not found: {}\n\nPlease check:\n\
+                 1. The file path is correct\n\
+                 2. The file exists at that location\n\
+                 3. You have permission to read the file",
+                absolute_path.display()
+            ));
+        }
+        
+        if !absolute_path.is_file() {
+            return Err(format!(
+                "Path is not a file: {}\n\nPlease provide a path to a .csv or .tsv file.",
+                absolute_path.display()
+            ));
+        }
+        
+        let extension = absolute_path
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
         if extension != "csv" && extension != "tsv" {
-            return Err("Only .csv or .tsv files are supported.".to_string());
+            return Err(format!(
+                "Only .csv or .tsv files are supported.\nYour file has extension: .{}",
+                extension
+            ));
         }
         let delimiter = if extension == "tsv" { b'\t' } else { b',' };
-        let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+        let bytes = tokio::fs::read(&absolute_path)
+            .await
+            .map_err(|e| format!("Failed to read file {}: {}", absolute_path.display(), e))?;
         let dataset_id = Uuid::new_v4().to_string();
         let upload_dir = std::path::Path::new("uploads");
         tokio::fs::create_dir_all(upload_dir)
             .await
-            .map_err(|e| e.to_string())?;
-        let filename = std::path::Path::new(path)
+            .map_err(|e| format!("Failed to create uploads directory: {}", e))?;
+        let filename = absolute_path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("dataset.csv")
