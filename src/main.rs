@@ -172,6 +172,7 @@ async fn run_server(config: Config, port: u16) -> anyhow::Result<()> {
     let state = oxidized_bio::AppState {
         pool,
         config: config.clone(),
+        dataset_registry: oxidized_bio::data_registry::DatasetRegistry::default(),
     };
 
     // Create router

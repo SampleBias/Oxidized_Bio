@@ -17,6 +17,8 @@ pub mod utils;
 pub mod rfc;       // Remote Function Call system for Docker container access
 pub mod settings;  // User settings and API key management
 pub mod tui;       // Terminal User Interface
+pub mod data_registry;
+pub mod analysis;
 
 // Re-exports for convenience
 pub use config::Config;

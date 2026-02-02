@@ -90,6 +90,8 @@ bytes = "1"
 mime = "0.3"
 mime_guess = "2"
 dirs = "5"
+nalgebra = "0.33"
+plotters = "0.3"
 
 # RFC (Remote Function Call) - Cryptography
 rsa = { version = "0.9", features = ["sha2"] }

@@ -201,6 +201,22 @@ Content-Type: multipart/form-data
 file: [binary data]
 ```
 
+#### Data Analysis
+```http
+POST /api/analysis
+Content-Type: application/json
+
+{
+  "dataset_id": "uuid",
+  "target_column": "age",
+  "group_column": "cell_type",
+  "covariates": ["batch", "sex"],
+  "boxplot_column": "marker_1",
+  "max_columns": 50,
+  "max_groups": 20
+}
+```
+
 ### Payment-Gated Endpoints (x402/b402)
 
 ```http

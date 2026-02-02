@@ -13,6 +13,7 @@ pub mod chat;
 pub mod deep_research;
 pub mod health;
 pub mod files;
+pub mod analysis;
 
 use axum::Router;
 use crate::models::AppState;
@@ -32,6 +33,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(chat::router(state.clone()))
         .merge(deep_research::router(state.clone()))
         .merge(files::router(state.clone()))
+        .merge(analysis::router(state.clone()))
         .merge(rfc::router(state))
         .merge(health::router())
         .merge(settings::router());  // Settings API (no state needed)

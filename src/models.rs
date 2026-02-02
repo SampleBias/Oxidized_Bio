@@ -1,10 +1,12 @@
 use sqlx::PgPool;
 use crate::config::Config;
+use crate::data_registry::DatasetRegistry;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: Config,
+    pub dataset_registry: DatasetRegistry,
 }
 
 // Core models based on TypeScript definitions
@@ -147,6 +149,56 @@ pub struct FileUpload {
     pub filename: String,
     pub content_type: String,
     pub data: Vec<u8>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AnalysisRequest {
+    pub dataset_id: String,
+    pub target_column: Option<String>,
+    pub group_column: Option<String>,
+    pub covariates: Option<Vec<String>>,
+    pub boxplot_column: Option<String>,
+    pub max_columns: Option<usize>,
+    pub max_groups: Option<usize>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AnalysisResponse {
+    pub status: String,
+    pub dataset_id: String,
+    pub summary: String,
+    pub descriptive_stats: Vec<DescriptiveStat>,
+    pub regressions: Vec<RegressionResult>,
+    pub novelty_scores: Vec<NoveltyScore>,
+    pub artifacts: Vec<AnalysisArtifact>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DescriptiveStat {
+    pub column: String,
+    pub count: usize,
+    pub mean: f64,
+    pub std_dev: f64,
+    pub min: f64,
+    pub median: f64,
+    pub max: f64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RegressionResult {
+    pub target: String,
+    pub predictors: Vec<String>,
+    pub intercept: f64,
+    pub coefficients: Vec<f64>,
+    pub r2: f64,
+    pub n: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NoveltyScore {
+    pub column: String,
+    pub score: f64,
+    pub rationale: String,
 }
 
 /// Chat response format matching frontend expectations
