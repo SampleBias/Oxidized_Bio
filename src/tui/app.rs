@@ -99,6 +99,10 @@ pub enum AppEvent {
     ResponseComplete(String),
     /// Error occurred
     Error(String),
+    /// Workflow stage updated
+    WorkflowStageUpdated(WorkflowStage),
+    /// Add a message to the chat
+    WorkflowMessage(MessageRole, String),
 }
 
 /// Provider configuration for settings view
@@ -166,6 +170,7 @@ pub struct App {
     pub draft_versions: Vec<String>,
     pub feedbacks: Vec<String>,
     pub latex_output: Option<String>,
+    pub auto_mode: bool,
 
     // Async communication
     event_rx: Option<mpsc::Receiver<AppEvent>>,
@@ -239,6 +244,7 @@ impl App {
             draft_versions: Vec::new(),
             feedbacks: Vec::new(),
             latex_output: None,
+            auto_mode: true,
             event_rx: Some(rx),
             event_tx: Some(tx),
             dataset_registry: DatasetRegistry::default(),
@@ -264,7 +270,7 @@ impl App {
         app.messages[0].content = format!(
             "Welcome to Oxidized Bio Research Agent!\n\n\
              API Status: {} | {}\n\n\
-             Type a research question below or /help for commands.\n\
+             Paste a dataset path to begin, or /help for commands.\n\
              Press Ctrl+S to configure your API keys in Settings.",
             llm_status_str, search_status_str
         );
@@ -406,6 +412,16 @@ impl App {
         match event {
             AppEvent::StageChanged(stage) => {
                 self.pipeline_stage = stage;
+            }
+            AppEvent::WorkflowStageUpdated(stage) => {
+                self.workflow_stage = stage;
+            }
+            AppEvent::WorkflowMessage(role, content) => {
+                self.messages.push(ChatMessage {
+                    role,
+                    content,
+                    timestamp: Utc::now(),
+                });
             }
             AppEvent::ObjectiveUpdated(objective) => {
                 self.current_objective = Some(objective);
@@ -600,6 +616,44 @@ impl App {
         });
 
         if self.handle_slash_command(&content).await {
+            self.scroll_to_bottom();
+            return;
+        }
+
+        if self.auto_mode && self.workflow_stage == WorkflowStage::Upload {
+            match self
+                .load_dataset_from_path(&content, None)
+                .await
+            {
+                Ok(record) => {
+                    self.last_dataset_id = Some(record.dataset.id.clone());
+                    self.dataset_registry.insert(record.clone()).await;
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "Dataset loaded: {}\nRows: {} | Columns: {}\nID: {}\nAuto workflow starting...",
+                            record.dataset.filename,
+                            record.row_count,
+                            record.columns.len(),
+                            record.dataset.id
+                        ),
+                        timestamp: Utc::now(),
+                    });
+                    let tx = self.event_tx.clone().unwrap();
+                    let config = self.config.clone();
+                    tokio::spawn(async move {
+                        Self::run_automated_workflow(record, config, tx).await;
+                    });
+                    self.workflow_stage = WorkflowStage::Planning;
+                }
+                Err(e) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Upload failed: {}", e),
+                        timestamp: Utc::now(),
+                    });
+                }
+            }
             self.scroll_to_bottom();
             return;
         }
@@ -1280,6 +1334,193 @@ Dataset has {} rows and {} columns. Ensure Ensembl IDs and age are primary varia
                 tx.send(AppEvent::Error(e.to_string())).await.ok();
             }
         }
+    }
+
+    async fn run_automated_workflow(
+        record: DatasetRecord,
+        config: Config,
+        tx: mpsc::Sender<AppEvent>,
+    ) {
+        let dataset_id = record.dataset.id.clone();
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Planning))
+            .await;
+        let plan_prompt = format!(
+            "Create a research plan to discover aging biomarkers from log2-normalized microarray data. \
+Dataset has {} rows and {} columns. Ensure Ensembl IDs and age are primary variables.",
+            record.row_count,
+            record.columns.len()
+        );
+        let planning_result = agents::PlanningAgent::generate_plan(&plan_prompt, None, &config).await;
+        let plan = match planning_result {
+            Ok(plan) => {
+                let _ = tx
+                    .send(AppEvent::WorkflowMessage(
+                        MessageRole::Assistant,
+                        format!("Research plan generated:\n{}", plan.current_objective),
+                    ))
+                    .await;
+                plan
+            }
+            Err(e) => {
+                let _ = tx
+                    .send(AppEvent::Error(format!("Planning failed: {}", e)))
+                    .await;
+                return;
+            }
+        };
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Literature))
+            .await;
+        let mut literature_results = Vec::new();
+        for task in plan.plan.iter().filter(|t| t.task_type == "LITERATURE") {
+            match agents::LiteratureAgent::execute_task(task, &config).await {
+                Ok(result) => literature_results.push(result),
+                Err(e) => {
+                    let _ = tx
+                        .send(AppEvent::Error(format!("Literature task failed: {}", e)))
+                        .await;
+                    return;
+                }
+            }
+        }
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("Literature review complete. Sources: {}", literature_results.len()),
+            ))
+            .await;
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Findings))
+            .await;
+        let output_dir = std::path::Path::new("artifacts")
+            .join("analysis")
+            .join(&dataset_id);
+        if let Err(e) = tokio::fs::create_dir_all(&output_dir).await {
+            let _ = tx
+                .send(AppEvent::Error(format!("Failed to create artifacts dir: {}", e)))
+                .await;
+            return;
+        }
+        let analysis = match run_analysis(
+            &record,
+            &AnalysisConfig {
+                target_column: Some("age".to_string()),
+                group_column: Some("cell_type".to_string()),
+                covariates: Vec::new(),
+                boxplot_column: None,
+                max_columns: 50,
+                max_groups: 20,
+            },
+            &output_dir,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = tx
+                    .send(AppEvent::Error(format!("Analysis failed: {}", e)))
+                    .await;
+                return;
+            }
+        };
+        let manuscript = build_manuscript(&dataset_id, "age", "cell_type", &record, &analysis);
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("Findings generated.\n{}", analysis.summary),
+            ))
+            .await;
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Draft1))
+            .await;
+        let draft1 = Self::build_automated_draft(1, &manuscript, &plan, &literature_results);
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("Draft 1:\n\n{}", draft1),
+            ))
+            .await;
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Draft2))
+            .await;
+        let draft2 = Self::build_automated_draft(2, &manuscript, &plan, &literature_results);
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("Draft 2:\n\n{}", draft2),
+            ))
+            .await;
+
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::Draft3))
+            .await;
+        let draft3 = Self::build_automated_draft(3, &manuscript, &plan, &literature_results);
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("Draft 3:\n\n{}", draft3),
+            ))
+            .await;
+
+        let latex = Self::render_latex_static(&draft3);
+        let _ = tx
+            .send(AppEvent::WorkflowStageUpdated(WorkflowStage::LatexReady))
+            .await;
+        let _ = tx
+            .send(AppEvent::WorkflowMessage(
+                MessageRole::Assistant,
+                format!("LaTeX output:\n\n{}", latex),
+            ))
+            .await;
+    }
+
+    fn build_automated_draft(
+        version: usize,
+        manuscript: &str,
+        plan: &PlanningResult,
+        literature_results: &[LiteratureResult],
+    ) -> String {
+        let literature = if literature_results.is_empty() {
+            "No literature sources available.".to_string()
+        } else {
+            let items = literature_results
+                .iter()
+                .take(5)
+                .map(|r| r.objective.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Key literature tasks: {}", items)
+        };
+        format!(
+            "Draft {version}\n\n{manuscript}\n\nResearch Plan:\n{}\n\nLiterature Review:\n{literature}\n",
+            plan.current_objective
+        )
+    }
+
+    fn render_latex_static(draft: &str) -> String {
+        let mut latex = String::new();
+        latex.push_str("\\documentclass{article}\n");
+        latex.push_str("\\usepackage[margin=1in]{geometry}\n");
+        latex.push_str("\\usepackage{graphicx}\n");
+        latex.push_str("\\begin{document}\n");
+        for line in draft.lines() {
+            if line.trim().is_empty() {
+                latex.push_str("\n\n");
+            } else if line.starts_with("Draft")
+                || line.starts_with("Project ID")
+                || line.starts_with("Title")
+            {
+                latex.push_str(&format!("\\section*{{{}}}\n", line.replace("_", "\\_")));
+            } else {
+                latex.push_str(&format!("{}\\\\\n", line.replace("_", "\\_")));
+            }
+        }
+        latex.push_str("\\end{document}\n");
+        latex
     }
 
     /// Save the current setting

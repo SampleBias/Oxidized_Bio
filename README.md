@@ -210,6 +210,10 @@ Slash commands:
 7) Provide feedback again and `/next` for Draft 3.  
 8) `/latex` to export LaTeX. You can keep iterating with `/feedback` + `/next`.
 
+### Automated Workflow (TUI)
+On launch, paste a local dataset path at the prompt. The agent will auto-run:
+upload → plan → literature → findings → Drafts 1–3 → LaTeX output.
+
 #### Data Analysis
 ```http
 POST /api/analysis
