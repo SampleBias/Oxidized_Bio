@@ -121,7 +121,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                 let indent = "  ";
                 let max_line_width = available_width.saturating_sub(indent.len());
                 
-                if line.len() <= max_line_width {
+                if line.chars().count() <= max_line_width {
                     // Line fits, add as-is
                     lines.push(Line::from(vec![
                         Span::raw(indent),
@@ -131,7 +131,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                     // Line is too long, wrap it
                     let mut remaining = line;
                     while !remaining.is_empty() {
-                        if remaining.len() <= max_line_width {
+                        if remaining.chars().count() <= max_line_width {
                             lines.push(Line::from(vec![
                                 Span::raw(indent),
                                 Span::styled(remaining.to_string(), Theme::text()),
@@ -139,11 +139,36 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                             break;
                         } else {
                             // Find a good breaking point (space, comma, etc.)
-                            let break_point = remaining[..max_line_width]
-                                .rfind(|c: char| c.is_whitespace() || c == ',' || c == '.' || c == ';')
-                                .unwrap_or(max_line_width);
-                            
-                            let (chunk, rest) = remaining.split_at(break_point);
+                            let mut break_byte = None;
+                            let mut seen = 0usize;
+                            for (idx, ch) in remaining.char_indices() {
+                                if seen >= max_line_width {
+                                    break;
+                                }
+                                if ch.is_whitespace() || ch == ',' || ch == '.' || ch == ';' {
+                                    break_byte = Some(idx);
+                                }
+                                seen += 1;
+                            }
+                            let split_at = break_byte.unwrap_or_else(|| {
+                                // Fallback: split at char boundary nearest max_line_width
+                                let mut last_idx = 0usize;
+                                let mut count = 0usize;
+                                for (idx, _ch) in remaining.char_indices() {
+                                    if count >= max_line_width {
+                                        break;
+                                    }
+                                    last_idx = idx;
+                                    count += 1;
+                                }
+                                if last_idx == 0 {
+                                    remaining.len()
+                                } else {
+                                    last_idx
+                                }
+                            });
+
+                            let (chunk, rest) = remaining.split_at(split_at);
                             lines.push(Line::from(vec![
                                 Span::raw(indent),
                                 Span::styled(chunk.to_string(), Theme::text()),
