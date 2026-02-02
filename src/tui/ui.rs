@@ -100,7 +100,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
     let available_width = inner_area.width.saturating_sub(2) as usize; // Leave room for indent
 
     for msg in &app.messages {
-        let content = format_message_content(&msg.content);
+        let content = format_message_content(&msg.content, available_width);
         // Role prefix
         let (prefix, style) = match msg.role {
             MessageRole::User => ("You", Theme::user_message()),
@@ -198,21 +198,19 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(paragraph, inner_area);
 }
 
-fn format_message_content(content: &str) -> String {
-    if let Some(formatted) = try_format_markdown_table_as_cards(content) {
-        return formatted;
-    }
-
-    content.to_string()
+fn format_message_content(content: &str, available_width: usize) -> String {
+    format_markdown_tables(content, available_width)
 }
 
-fn try_format_markdown_table_as_cards(content: &str) -> Option<String> {
+fn format_markdown_tables(content: &str, available_width: usize) -> String {
     let lines: Vec<&str> = content.lines().collect();
+    let mut out: Vec<String> = Vec::new();
     let mut i = 0;
-    while i + 1 < lines.len() {
+    while i < lines.len() {
         let line = lines[i];
-        let next = lines[i + 1];
-        if line.contains('|') && line.contains("Protein / Family") && next.contains('|') && next.contains("---") {
+        let next = if i + 1 < lines.len() { lines[i + 1] } else { "" };
+        if line.contains('|') && next.contains('|') && next.contains("---") {
+            let header = line.trim().to_string();
             let mut rows: Vec<String> = Vec::new();
             let mut current: Option<String> = None;
             i += 2;
@@ -235,15 +233,134 @@ fn try_format_markdown_table_as_cards(content: &str) -> Option<String> {
             if let Some(row) = current.take() {
                 rows.push(row);
             }
-            if rows.is_empty() {
-                return None;
+            if !rows.is_empty() {
+                let header_cols = split_table_row(&header);
+                let col_count = header_cols.len();
+                if col_count <= 5 {
+                    out.push(format_rows_as_table(&header_cols, &rows, available_width));
+                } else {
+                    out.push(format_rows_as_split_table(&header_cols, &rows, available_width));
+                }
             }
-            return Some(format_rows_as_cards(&rows));
+            out.push(String::new());
+        } else {
+            out.push(line.to_string());
         }
         i += 1;
     }
+    out.join("\n")
+}
 
-    None
+fn format_rows_as_table(header_cols: &[String], rows: &[String], available_width: usize) -> String {
+    let col_count = header_cols.len();
+    let sep_width = (col_count * 3) + 1; // "| " + " |" per col, plus leading "|"
+    if available_width <= sep_width + col_count {
+        return rows.join("\n");
+    }
+
+    let content_width = available_width.saturating_sub(sep_width);
+    let weights = match col_count {
+        1 => vec![1],
+        2 => vec![3, 7],
+        3 => vec![2, 3, 5],
+        4 => vec![2, 3, 3, 4],
+        5 => vec![2, 3, 3, 4, 4],
+        _ => vec![1; col_count],
+    };
+    let weight_sum: usize = weights.iter().sum();
+    let mut widths: Vec<usize> = weights
+        .iter()
+        .map(|w| (content_width * *w) / weight_sum)
+        .collect();
+
+    // Ensure minimum width for each column
+    for w in widths.iter_mut() {
+        if *w < 8 {
+            *w = 8;
+        }
+    }
+
+    // Adjust last column to fit exactly
+    let used: usize = widths.iter().sum();
+    if used != content_width {
+        let last = widths.len() - 1;
+        if used > content_width {
+            let over = used - content_width;
+            widths[last] = widths[last].saturating_sub(over);
+        } else {
+            widths[last] += content_width - used;
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str(&format_table_row(header_cols, &widths));
+    out.push('\n');
+    out.push_str(&format_table_separator(&widths));
+    out.push('\n');
+
+    for (idx, row) in rows.iter().enumerate() {
+        let cols = split_table_row(row);
+        let mut wrapped_cols: Vec<Vec<String>> = Vec::new();
+        for (i, width) in widths.iter().enumerate() {
+            let value = cols.get(i).map(|s| s.as_str()).unwrap_or("");
+            wrapped_cols.push(wrap_cell(value, *width));
+        }
+        let max_lines = wrapped_cols.iter().map(|c| c.len()).max().unwrap_or(1);
+        for line_idx in 0..max_lines {
+            let mut line = String::new();
+            line.push('|');
+            for (col_idx, width) in widths.iter().enumerate() {
+                let cell_line = wrapped_cols[col_idx]
+                    .get(line_idx)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                line.push(' ');
+                line.push_str(&pad_cell(cell_line, *width));
+                line.push(' ');
+                line.push('|');
+            }
+            out.push_str(&line);
+            out.push('\n');
+        }
+        if idx + 1 < rows.len() {
+            out.push('\n');
+        }
+    }
+
+    out.trim_end().to_string()
+}
+
+fn format_rows_as_split_table(header_cols: &[String], rows: &[String], available_width: usize) -> String {
+    let col_count = header_cols.len();
+    if col_count <= 5 {
+        return format_rows_as_table(header_cols, rows, available_width);
+    }
+
+    let left_cols: Vec<usize> = (0..4.min(col_count)).collect();
+    let mut right_cols: Vec<usize> = vec![0];
+    for idx in 4..col_count {
+        right_cols.push(idx);
+    }
+
+    let left_header = select_columns(header_cols, &left_cols);
+    let right_header = select_columns(header_cols, &right_cols);
+
+    let left_rows = rows
+        .iter()
+        .map(|r| select_columns(&split_table_row(r), &left_cols).join(" | "))
+        .map(|r| format!("| {} |", r))
+        .collect::<Vec<_>>();
+    let right_rows = rows
+        .iter()
+        .map(|r| select_columns(&split_table_row(r), &right_cols).join(" | "))
+        .map(|r| format!("| {} |", r))
+        .collect::<Vec<_>>();
+
+    let mut out = String::new();
+    out.push_str(&format_rows_as_table(&left_header, &left_rows, available_width));
+    out.push_str("\n\n");
+    out.push_str(&format_rows_as_table(&right_header, &right_rows, available_width));
+    out
 }
 
 fn format_rows_as_cards(rows: &[String]) -> String {
@@ -286,6 +403,10 @@ fn format_rows_as_cards(rows: &[String]) -> String {
     out
 }
 
+fn select_columns(cols: &[String], indices: &[usize]) -> Vec<String> {
+    indices.iter().map(|i| cols.get(*i).cloned().unwrap_or_default()).collect()
+}
+
 fn split_table_row(row: &str) -> Vec<String> {
     let trimmed = row.trim();
     let trimmed = trimmed.trim_matches('|');
@@ -303,6 +424,85 @@ fn strip_markdown_bold(s: String) -> String {
     } else {
         s
     }
+}
+
+fn format_table_row(cols: &[String], widths: &[usize]) -> String {
+    let mut line = String::new();
+    line.push('|');
+    for (i, width) in widths.iter().enumerate() {
+        let value = cols.get(i).map(|s| s.as_str()).unwrap_or("");
+        line.push(' ');
+        line.push_str(&pad_cell(value, *width));
+        line.push(' ');
+        line.push('|');
+    }
+    line
+}
+
+fn format_table_separator(widths: &[usize]) -> String {
+    let mut line = String::new();
+    line.push('|');
+    for width in widths {
+        line.push_str(&"-".repeat(width + 2));
+        line.push('|');
+    }
+    line
+}
+
+fn pad_cell(value: &str, width: usize) -> String {
+    let len = value.chars().count();
+    if len >= width {
+        value.chars().take(width).collect()
+    } else {
+        let mut s = String::with_capacity(width);
+        s.push_str(value);
+        s.push_str(&" ".repeat(width - len));
+        s
+    }
+}
+
+fn wrap_cell(value: &str, width: usize) -> Vec<String> {
+    if value.is_empty() || width == 0 {
+        return vec![String::new()];
+    }
+    let mut lines = Vec::new();
+    let mut remaining = value.trim();
+    while !remaining.is_empty() {
+        if remaining.chars().count() <= width {
+            lines.push(remaining.to_string());
+            break;
+        }
+        let mut break_byte = None;
+        let mut seen = 0usize;
+        for (idx, ch) in remaining.char_indices() {
+            if seen >= width {
+                break;
+            }
+            if ch.is_whitespace() || ch == ',' || ch == '.' || ch == ';' {
+                break_byte = Some(idx);
+            }
+            seen += 1;
+        }
+        let split_at = break_byte.unwrap_or_else(|| {
+            let mut last_idx = 0usize;
+            let mut count = 0usize;
+            for (idx, _ch) in remaining.char_indices() {
+                if count >= width {
+                    break;
+                }
+                last_idx = idx;
+                count += 1;
+            }
+            if last_idx == 0 { remaining.len() } else { last_idx }
+        });
+        let (chunk, rest) = remaining.split_at(split_at);
+        lines.push(chunk.trim().to_string());
+        remaining = rest.trim_start();
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }
 
 /// Render the input area
