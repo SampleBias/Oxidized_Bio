@@ -100,6 +100,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
     let available_width = inner_area.width.saturating_sub(2) as usize; // Leave room for indent
 
     for msg in &app.messages {
+        let content = format_message_content(&msg.content);
         // Role prefix
         let (prefix, style) = match msg.role {
             MessageRole::User => ("You", Theme::user_message()),
@@ -112,7 +113,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
         ]));
 
         // Message content - wrap text to fit viewport
-        for line in msg.content.lines() {
+        for line in content.lines() {
             if line.is_empty() {
                 lines.push(Line::from("  "));
             } else {
@@ -124,7 +125,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                     // Line fits, add as-is
                     lines.push(Line::from(vec![
                         Span::raw(indent),
-                        Span::styled(line, Theme::text()),
+                        Span::styled(line.to_string(), Theme::text()),
                     ]));
                 } else {
                     // Line is too long, wrap it
@@ -133,7 +134,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                         if remaining.len() <= max_line_width {
                             lines.push(Line::from(vec![
                                 Span::raw(indent),
-                                Span::styled(remaining, Theme::text()),
+                                Span::styled(remaining.to_string(), Theme::text()),
                             ]));
                             break;
                         } else {
@@ -145,7 +146,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
                             let (chunk, rest) = remaining.split_at(break_point);
                             lines.push(Line::from(vec![
                                 Span::raw(indent),
-                                Span::styled(chunk, Theme::text()),
+                                Span::styled(chunk.to_string(), Theme::text()),
                             ]));
                             remaining = rest.trim_start();
                         }
@@ -170,6 +171,113 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &App) {
         .scroll((app.scroll_offset, 0));
 
     frame.render_widget(paragraph, inner_area);
+}
+
+fn format_message_content(content: &str) -> String {
+    if let Some(formatted) = try_format_markdown_table_as_cards(content) {
+        return formatted;
+    }
+
+    content.to_string()
+}
+
+fn try_format_markdown_table_as_cards(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i + 1 < lines.len() {
+        let line = lines[i];
+        let next = lines[i + 1];
+        if line.contains('|') && line.contains("Protein / Family") && next.contains('|') && next.contains("---") {
+            let mut rows: Vec<String> = Vec::new();
+            let mut current: Option<String> = None;
+            i += 2;
+            while i < lines.len() {
+                let l = lines[i];
+                if l.trim().is_empty() {
+                    break;
+                }
+                if l.trim_start().starts_with('|') {
+                    if let Some(row) = current.take() {
+                        rows.push(row);
+                    }
+                    current = Some(l.trim().to_string());
+                } else if let Some(row) = current.as_mut() {
+                    row.push(' ');
+                    row.push_str(l.trim());
+                }
+                i += 1;
+            }
+            if let Some(row) = current.take() {
+                rows.push(row);
+            }
+            if rows.is_empty() {
+                return None;
+            }
+            return Some(format_rows_as_cards(&rows));
+        }
+        i += 1;
+    }
+
+    None
+}
+
+fn format_rows_as_cards(rows: &[String]) -> String {
+    let labels = [
+        "Subtype(s)",
+        "Location ",
+        "Function ",
+        "Partners ",
+        "Disease  ",
+        "Refs     ",
+    ];
+    let mut out = String::new();
+    for (idx, row) in rows.iter().enumerate() {
+        let cols = split_table_row(row);
+        if cols.is_empty() {
+            continue;
+        }
+        let title = strip_markdown_bold(cols.get(0).cloned().unwrap_or_default());
+        out.push_str("[ ");
+        out.push_str(title.trim());
+        out.push_str(" ]\n");
+
+        for (i, label) in labels.iter().enumerate() {
+            let value = cols.get(i + 1).cloned().unwrap_or_default();
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+            out.push_str(label);
+            out.push_str(": ");
+            out.push_str(value);
+            out.push('\n');
+        }
+
+        if idx + 1 < rows.len() {
+            out.push('\n');
+        }
+    }
+
+    out
+}
+
+fn split_table_row(row: &str) -> Vec<String> {
+    let trimmed = row.trim();
+    let trimmed = trimmed.trim_matches('|');
+    trimmed
+        .split('|')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn strip_markdown_bold(s: String) -> String {
+    let trimmed = s.trim();
+    if trimmed.starts_with("**") && trimmed.ends_with("**") && trimmed.len() >= 4 {
+        trimmed[2..trimmed.len() - 2].to_string()
+    } else {
+        s
+    }
 }
 
 /// Render the input area
