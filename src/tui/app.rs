@@ -60,6 +60,23 @@ pub enum MessageRole {
     System,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorkflowStage {
+    Upload,
+    Planning,
+    Literature,
+    Findings,
+    ResearcherFeedback,
+    Draft1,
+    UserFeedback1,
+    Draft2,
+    UserFeedback2,
+    Draft3,
+    UserFeedback3,
+    LatexReady,
+    Complete,
+}
+
 /// Current view/screen
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum View {
@@ -140,6 +157,16 @@ pub struct App {
     pub last_stream_tps: f32,
     pub spinner_index: usize,
 
+    // Guided workflow state
+    pub workflow_stage: WorkflowStage,
+    pub planning_result: Option<PlanningResult>,
+    pub literature_results: Vec<LiteratureResult>,
+    pub findings_summary: Option<String>,
+    pub manuscript_base: Option<String>,
+    pub draft_versions: Vec<String>,
+    pub feedbacks: Vec<String>,
+    pub latex_output: Option<String>,
+
     // Async communication
     event_rx: Option<mpsc::Receiver<AppEvent>>,
     event_tx: Option<mpsc::Sender<AppEvent>>,
@@ -204,6 +231,14 @@ impl App {
             stream_tps: 0.0,
             last_stream_tps: 0.0,
             spinner_index: 0,
+            workflow_stage: WorkflowStage::Upload,
+            planning_result: None,
+            literature_results: Vec::new(),
+            findings_summary: None,
+            manuscript_base: None,
+            draft_versions: Vec::new(),
+            feedbacks: Vec::new(),
+            latex_output: None,
             event_rx: Some(rx),
             event_tx: Some(tx),
             dataset_registry: DatasetRegistry::default(),
@@ -636,6 +671,10 @@ impl App {
 /list (list loaded datasets)\n\
 /use <dataset_id>\n\
 /analyze [dataset_id] [target=age] [group=cell_type] [box=marker_1] [cov=batch,sex]\n\
+ /status (show workflow stage)\n\
+ /next (advance workflow stage)\n\
+ /feedback <text>\n\
+ /latex (render LaTeX for latest draft)\n\
 Tip: run /upload first, then /analyze."
                         .to_string(),
                     timestamp: Utc::now(),
@@ -663,6 +702,7 @@ Tip: run /upload first, then /analyze."
                     Ok(record) => {
                         self.last_dataset_id = Some(record.dataset.id.clone());
                         self.dataset_registry.insert(record.clone()).await;
+                        self.workflow_stage = WorkflowStage::Planning;
                         self.messages.push(ChatMessage {
                             role: MessageRole::System,
                             content: format!(
@@ -824,6 +864,55 @@ Tip: run /upload first, then /analyze."
                 }
                 return true;
             }
+            "/status" => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Workflow stage: {:?}", self.workflow_stage),
+                    timestamp: Utc::now(),
+                });
+                return true;
+            }
+            "/next" => {
+                self.advance_workflow().await;
+                return true;
+            }
+            "/feedback" => {
+                let feedback = parts.collect::<Vec<_>>().join(" ");
+                if feedback.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /feedback <text>".to_string(),
+                        timestamp: Utc::now(),
+                    });
+                    return true;
+                }
+                self.feedbacks.push(feedback.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Feedback recorded. Use /next to apply it.".to_string(),
+                    timestamp: Utc::now(),
+                });
+                return true;
+            }
+            "/latex" => {
+                if let Some(draft) = self.draft_versions.last() {
+                    let latex = self.render_latex(draft);
+                    self.latex_output = Some(latex.clone());
+                    self.workflow_stage = WorkflowStage::LatexReady;
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: format!("LaTeX output:\n\n{}", latex),
+                        timestamp: Utc::now(),
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "No draft available yet. Use /next to generate drafts.".to_string(),
+                        timestamp: Utc::now(),
+                    });
+                }
+                return true;
+            }
             _ => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
@@ -867,6 +956,7 @@ Tip: run /upload first, then /analyze."
             .map_err(|e| e.to_string())?;
 
         let (columns, row_count) = infer_csv_metadata(&bytes, delimiter)?;
+        validate_microarray_headers(&columns)?;
 
         let dataset = UploadedDataset {
             filename: filename.clone(),
@@ -886,6 +976,240 @@ Tip: run /upload first, then /analyze."
             columns,
             row_count,
         })
+    }
+
+    async fn advance_workflow(&mut self) {
+        match self.workflow_stage {
+            WorkflowStage::Upload => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Please upload a dataset first using /upload.".to_string(),
+                    timestamp: Utc::now(),
+                });
+            }
+            WorkflowStage::Planning => {
+                if let Err(e) = self.run_planning_stage().await {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Planning failed: {}", e),
+                        timestamp: Utc::now(),
+                    });
+                } else {
+                    self.workflow_stage = WorkflowStage::Literature;
+                }
+            }
+            WorkflowStage::Literature => {
+                if let Err(e) = self.run_literature_stage().await {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Literature review failed: {}", e),
+                        timestamp: Utc::now(),
+                    });
+                } else {
+                    self.workflow_stage = WorkflowStage::Findings;
+                }
+            }
+            WorkflowStage::Findings => {
+                if let Err(e) = self.run_findings_stage().await {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Findings generation failed: {}", e),
+                        timestamp: Utc::now(),
+                    });
+                } else {
+                    self.workflow_stage = WorkflowStage::ResearcherFeedback;
+                }
+            }
+            WorkflowStage::ResearcherFeedback | WorkflowStage::Draft1 => {
+                let draft = self.build_draft(1);
+                self.draft_versions.push(draft.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Assistant,
+                    content: format!("Draft 1:\n\n{}", draft),
+                    timestamp: Utc::now(),
+                });
+                self.workflow_stage = WorkflowStage::UserFeedback1;
+            }
+            WorkflowStage::UserFeedback1 | WorkflowStage::Draft2 => {
+                let draft = self.build_draft(2);
+                self.draft_versions.push(draft.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Assistant,
+                    content: format!("Draft 2:\n\n{}", draft),
+                    timestamp: Utc::now(),
+                });
+                self.workflow_stage = WorkflowStage::UserFeedback2;
+            }
+            WorkflowStage::UserFeedback2 | WorkflowStage::Draft3 => {
+                let draft = self.build_draft(3);
+                self.draft_versions.push(draft.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Assistant,
+                    content: format!("Draft 3:\n\n{}", draft),
+                    timestamp: Utc::now(),
+                });
+                self.workflow_stage = WorkflowStage::UserFeedback3;
+            }
+            WorkflowStage::UserFeedback3 => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Ready for LaTeX output. Run /latex to export, or provide more /feedback and /next.".to_string(),
+                    timestamp: Utc::now(),
+                });
+                self.workflow_stage = WorkflowStage::LatexReady;
+            }
+            WorkflowStage::LatexReady | WorkflowStage::Complete => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Workflow complete. Use /latex to re-render the latest draft or /feedback to continue refining.".to_string(),
+                    timestamp: Utc::now(),
+                });
+            }
+        }
+    }
+
+    async fn run_planning_stage(&mut self) -> Result<(), String> {
+        let dataset_id = self
+            .last_dataset_id
+            .clone()
+            .ok_or_else(|| "No dataset loaded. Use /upload.".to_string())?;
+        let record = self
+            .dataset_registry
+            .get(&dataset_id)
+            .await
+            .ok_or_else(|| "Dataset not found.".to_string())?;
+        let prompt = format!(
+            "Create a research plan to discover aging biomarkers from log2-normalized microarray data. \
+Dataset has {} rows and {} columns. Ensure Ensembl IDs and age are primary variables.",
+            record.row_count,
+            record.columns.len()
+        );
+        match agents::PlanningAgent::generate_plan(&prompt, None, &self.config).await {
+            Ok(plan) => {
+                self.planning_result = Some(plan.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Assistant,
+                    content: format!("Research plan generated:\n{}", plan.current_objective),
+                    timestamp: Utc::now(),
+                });
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    async fn run_literature_stage(&mut self) -> Result<(), String> {
+        let plan = self
+            .planning_result
+            .clone()
+            .ok_or_else(|| "No plan available. Run /next after planning.".to_string())?;
+        let mut results = Vec::new();
+        for task in plan.plan.iter().filter(|t| t.task_type == "LITERATURE") {
+            match agents::LiteratureAgent::execute_task(task, &self.config).await {
+                Ok(result) => results.push(result),
+                Err(e) => {
+                    return Err(format!("Literature task failed: {}", e));
+                }
+            }
+        }
+        self.literature_results = results;
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: format!(
+                "Literature review complete. Sources: {}",
+                self.literature_results.len()
+            ),
+            timestamp: Utc::now(),
+        });
+        Ok(())
+    }
+
+    async fn run_findings_stage(&mut self) -> Result<(), String> {
+        let dataset_id = self
+            .last_dataset_id
+            .clone()
+            .ok_or_else(|| "No dataset loaded. Use /upload.".to_string())?;
+        let record = self
+            .dataset_registry
+            .get(&dataset_id)
+            .await
+            .ok_or_else(|| "Dataset not found.".to_string())?;
+        let output_dir = std::path::Path::new("artifacts")
+            .join("analysis")
+            .join(&dataset_id);
+        tokio::fs::create_dir_all(&output_dir)
+            .await
+            .map_err(|e| e.to_string())?;
+        let config = AnalysisConfig {
+            target_column: Some("age".to_string()),
+            group_column: Some("cell_type".to_string()),
+            covariates: Vec::new(),
+            boxplot_column: None,
+            max_columns: 50,
+            max_groups: 20,
+        };
+        let analysis = run_analysis(&record, &config, &output_dir).map_err(|e| e.to_string())?;
+        let manuscript = build_manuscript(&dataset_id, "age", "cell_type", &record, &analysis);
+        self.findings_summary = Some(analysis.summary.clone());
+        self.manuscript_base = Some(manuscript.clone());
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: format!("Findings generated.\n{}", analysis.summary),
+            timestamp: Utc::now(),
+        });
+        Ok(())
+    }
+
+    fn build_draft(&self, version: usize) -> String {
+        let base = self
+            .manuscript_base
+            .clone()
+            .unwrap_or_else(|| "No manuscript base available.".to_string());
+        let plan = self
+            .planning_result
+            .as_ref()
+            .map(|p| p.current_objective.clone())
+            .unwrap_or_else(|| "No plan available.".to_string());
+        let literature = if self.literature_results.is_empty() {
+            "No literature sources available.".to_string()
+        } else {
+            let items = self
+                .literature_results
+                .iter()
+                .take(5)
+                .map(|r| r.objective.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Key literature tasks: {}", items)
+        };
+        let feedback = if self.feedbacks.is_empty() {
+            "No feedback provided.".to_string()
+        } else {
+            self.feedbacks.join(" | ")
+        };
+
+        format!(
+            "Draft {version}\n\n{base}\n\nResearch Plan:\n{plan}\n\nLiterature Review:\n{literature}\n\nFeedback Incorporated:\n{feedback}\n"
+        )
+    }
+
+    fn render_latex(&self, draft: &str) -> String {
+        let mut latex = String::new();
+        latex.push_str("\\documentclass{article}\n");
+        latex.push_str("\\usepackage[margin=1in]{geometry}\n");
+        latex.push_str("\\usepackage{graphicx}\n");
+        latex.push_str("\\begin{document}\n");
+        for line in draft.lines() {
+            if line.trim().is_empty() {
+                latex.push_str("\n\n");
+            } else if line.starts_with("Draft") || line.starts_with("Project ID") || line.starts_with("Title") {
+                latex.push_str(&format!("\\section*{{{}}}\n", line.replace("_", "\\_")));
+            } else {
+                latex.push_str(&format!("{}\\\\\n", line.replace("_", "\\_")));
+            }
+        }
+        latex.push_str("\\end{document}\n");
+        latex
     }
 
     /// Run the research pipeline in background
@@ -1117,4 +1441,14 @@ fn infer_csv_metadata(bytes: &[u8], delimiter: u8) -> Result<(Vec<String>, usize
         row_count += 1;
     }
     Ok((headers, row_count))
+}
+
+fn validate_microarray_headers(headers: &[String]) -> Result<(), String> {
+    let lowered: Vec<String> = headers.iter().map(|h| h.to_lowercase()).collect();
+    let has_ensembl = lowered.iter().any(|h| h.contains("ensembl"));
+    let has_age = lowered.iter().any(|h| h == "age" || h.contains("age"));
+    if !has_ensembl || !has_age {
+        return Err("Dataset must include Ensembl ID and Age columns.".to_string());
+    }
+    Ok(())
 }

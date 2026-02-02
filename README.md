@@ -194,7 +194,21 @@ Slash commands:
 /list
 /use <dataset_id>
 /analyze [dataset_id] [target=age] [group=cell_type] [box=marker_1] [cov=batch,sex]
+/status
+/next
+/feedback <text>
+/latex
 ```
+
+### Guided Biomarker Workflow (TUI)
+1) Upload dataset (`/upload`) – must include **Ensembl ID** and **Age** columns.  
+2) `/next` to generate the research plan.  
+3) `/next` to run literature review.  
+4) `/next` to generate findings + visualizations.  
+5) `/next` to produce Draft 1.  
+6) Provide feedback with `/feedback <text>` and `/next` to generate Draft 2.  
+7) Provide feedback again and `/next` for Draft 3.  
+8) `/latex` to export LaTeX. You can keep iterating with `/feedback` + `/next`.
 
 #### Data Analysis
 ```http
