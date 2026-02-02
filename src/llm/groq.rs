@@ -1,6 +1,7 @@
 use crate::llm::provider::LLMAdapter;
 use crate::types::{AppResult, LLMRequest, LLMResponse};
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 
 const GROQ_API_BASE: &str = "https://api.groq.com/openai/v1";
 
@@ -20,5 +21,9 @@ impl GroqAdapter {
 impl LLMAdapter for GroqAdapter {
     async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
         self.inner.create_chat_completion(request).await
+    }
+
+    async fn create_chat_completion_stream(&self, request: &LLMRequest) -> AppResult<BoxStream<'static, AppResult<String>>> {
+        self.inner.create_chat_completion_stream(request).await
     }
 }

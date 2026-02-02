@@ -346,15 +346,34 @@ impl App {
                 if let Some(last) = self.messages.last_mut() {
                     if last.role == MessageRole::Assistant {
                         last.content.push_str(&chunk);
+                        return;
                     }
                 }
-            }
-            AppEvent::ResponseComplete(response) => {
+
                 self.messages.push(ChatMessage {
                     role: MessageRole::Assistant,
-                    content: response,
+                    content: chunk,
                     timestamp: Utc::now(),
                 });
+            }
+            AppEvent::ResponseComplete(response) => {
+                if let Some(last) = self.messages.last_mut() {
+                    if last.role == MessageRole::Assistant {
+                        last.content = response;
+                    } else {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Assistant,
+                            content: response,
+                            timestamp: Utc::now(),
+                        });
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: response,
+                        timestamp: Utc::now(),
+                    });
+                }
                 self.pipeline_stage = PipelineStage::Complete;
                 self.scroll_to_bottom();
             }
@@ -585,12 +604,16 @@ impl App {
                     .ok();
 
                 let reply_mode = agents::ReplyAgent::classify_mode(&message);
-                let response = agents::ReplyAgent::generate_response(
+                let tx_chunks = tx.clone();
+                let response = agents::ReplyAgent::generate_response_streaming(
                     &message,
                     Some(&plan),
                     &literature_results,
                     reply_mode,
                     &config,
+                    move |chunk| {
+                        let _ = tx_chunks.try_send(AppEvent::ResponseChunk(chunk.to_string()));
+                    },
                 )
                 .await;
 

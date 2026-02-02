@@ -9,6 +9,7 @@ use crate::llm::provider::{LLMProviderConfig, LLM};
 use crate::agents::literature::LiteratureResult;
 use crate::agents::planning::PlanningResult;
 use anyhow::Result;
+use futures::StreamExt;
 use tracing::{info, warn, error};
 
 /// Reply mode - determines output format
@@ -25,6 +26,14 @@ pub enum ReplyMode {
 pub struct ReplyAgent;
 
 impl ReplyAgent {
+    fn max_tokens_for_provider(config: &crate::config::Config) -> u32 {
+        if config.llm.default_provider == "groq" {
+            4096
+        } else {
+            2048
+        }
+    }
+
     /// Generate a response based on research findings
     pub async fn generate_response(
         user_message: &str,
@@ -66,7 +75,7 @@ impl ReplyAgent {
             provider: config.llm.default_provider.clone(),
             model: config.llm.default_model.clone(),
             messages: vec![LLMMessage::user(&prompt)],
-            max_tokens: Some(2048),
+            max_tokens: Some(Self::max_tokens_for_provider(config)),
             temperature: Some(0.7),
             system_instruction: Some(
                 "You are a knowledgeable research assistant. Provide clear, accurate, and helpful responses based on the research context provided.".to_string()
@@ -81,6 +90,87 @@ impl ReplyAgent {
             Err(e) => {
                 error!(error = %e, "LLM call failed, using simple response");
                 Ok(Self::simple_response(user_message, literature_results))
+            }
+        }
+    }
+
+    /// Generate a response with streaming support (chunks sent via callback)
+    pub async fn generate_response_streaming<F>(
+        user_message: &str,
+        planning: Option<&PlanningResult>,
+        literature_results: &[LiteratureResult],
+        mode: ReplyMode,
+        config: &crate::config::Config,
+        mut on_chunk: F,
+    ) -> AppResult<String>
+    where
+        F: FnMut(&str) + Send,
+    {
+        info!(
+            message_len = user_message.len(),
+            mode = ?mode,
+            literature_count = literature_results.len(),
+            "Generating reply (streaming)"
+        );
+
+        let api_key = match config.llm.active_api_key() {
+            Some(key) => key,
+            None => {
+                warn!("No LLM API key configured, using simple response");
+                return Ok(Self::simple_response(user_message, literature_results));
+            }
+        };
+
+        let prompt = match mode {
+            ReplyMode::Answer => Self::create_answer_prompt(user_message, literature_results, planning),
+            ReplyMode::Report => Self::create_report_prompt(user_message, literature_results, planning),
+            ReplyMode::Chat => Self::create_chat_prompt(user_message, literature_results),
+        };
+
+        let llm = LLM::new(LLMProviderConfig {
+            name: config.llm.default_provider.clone(),
+            api_key,
+        });
+
+        let request = LLMRequest {
+            provider: config.llm.default_provider.clone(),
+            model: config.llm.default_model.clone(),
+            messages: vec![LLMMessage::user(&prompt)],
+            max_tokens: Some(Self::max_tokens_for_provider(config)),
+            temperature: Some(0.7),
+            system_instruction: Some(
+                "You are a knowledgeable research assistant. Provide clear, accurate, and helpful responses based on the research context provided.".to_string()
+            ),
+        };
+
+        match llm.create_chat_completion_stream(&request).await {
+            Ok(mut stream) => {
+                let mut full = String::new();
+                while let Some(chunk) = stream.next().await {
+                    match chunk {
+                        Ok(delta) => {
+                            if !delta.is_empty() {
+                                on_chunk(&delta);
+                                full.push_str(&delta);
+                            }
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Streaming chunk failed, falling back");
+                            return Self::generate_response(user_message, planning, literature_results, mode, config).await;
+                        }
+                    }
+                }
+
+                if full.is_empty() {
+                    warn!("Streaming returned empty response, falling back");
+                    return Self::generate_response(user_message, planning, literature_results, mode, config).await;
+                }
+
+                Ok(full)
+            }
+            Err(e) => {
+                warn!(error = %e, "Streaming not available, falling back to standard completion");
+                Self::generate_response(user_message, planning, literature_results, mode, config).await
             }
         }
     }

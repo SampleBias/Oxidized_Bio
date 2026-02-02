@@ -252,7 +252,7 @@ impl LiteratureAgent {
             provider: config.llm.default_provider.clone(),
             model: config.llm.default_model.clone(),
             messages: vec![LLMMessage::user(&prompt)],
-            max_tokens: Some(2048),
+            max_tokens: Some(if config.llm.default_provider == "groq" { 4096 } else { 2048 }),
             temperature: Some(0.3), // Lower temperature for more factual responses
             system_instruction: Some(
                 "You are a scientific literature research assistant with deep knowledge of biology, medicine, and life sciences. Provide accurate, evidence-based information with citations where possible.".to_string()

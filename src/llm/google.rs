@@ -2,8 +2,9 @@
 // TODO: Implement full Google adapter
 
 use crate::llm::provider::LLMAdapter;
-use crate::types::{AppResult, LLMRequest, LLMResponse};
+use crate::types::{AppResult, LLMRequest, LLMResponse, AppError};
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 
 pub struct GoogleAdapter {
     api_key: String,
@@ -30,5 +31,9 @@ impl LLMAdapter for GoogleAdapter {
                 total_tokens: 0,
             },
         })
+    }
+
+    async fn create_chat_completion_stream(&self, _request: &LLMRequest) -> AppResult<BoxStream<'static, AppResult<String>>> {
+        Err(AppError::LLMApi("Streaming not supported for Google adapter".to_string()))
     }
 }

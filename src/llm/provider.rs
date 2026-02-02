@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use crate::types::{LLMRequest, LLMResponse, AppResult};
+use futures::stream::BoxStream;
 
 #[async_trait]
 pub trait LLMAdapter: Send + Sync {
     async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse>;
+    async fn create_chat_completion_stream(&self, request: &LLMRequest) -> AppResult<BoxStream<'static, AppResult<String>>>;
 }
 
 /// Configuration for LLM provider (renamed to avoid conflict with LLMProvider enum in types.rs)
@@ -36,5 +38,12 @@ impl LLM {
 
     pub async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
         self.adapter.create_chat_completion(request).await
+    }
+
+    pub async fn create_chat_completion_stream(
+        &self,
+        request: &LLMRequest,
+    ) -> AppResult<BoxStream<'static, AppResult<String>>> {
+        self.adapter.create_chat_completion_stream(request).await
     }
 }

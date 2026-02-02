@@ -6,6 +6,7 @@ use async_openai::{
     config::OpenAIConfig,
     types::chat::{
         CreateChatCompletionRequestArgs,
+        CreateChatCompletionRequest,
         ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage,
         ChatCompletionRequestSystemMessageContent,
@@ -20,6 +21,8 @@ use async_openai::{
         ImageDetail,
     },
 };
+use futures::StreamExt;
+use futures::stream::BoxStream;
 
 pub struct OpenAIAdapter {
     client: Client<OpenAIConfig>,
@@ -117,13 +120,9 @@ impl OpenAIAdapter {
             }
         }
     }
-}
 
-#[async_trait]
-impl LLMAdapter for OpenAIAdapter {
-    #[allow(deprecated)]
-    async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
-        let messages: Vec<ChatCompletionRequestMessage> = request
+    fn build_openai_request(request: &LLMRequest, stream: bool) -> AppResult<CreateChatCompletionRequest> {
+        let mut messages: Vec<ChatCompletionRequestMessage> = request
             .messages
             .iter()
             .map(|m| match m.role.as_str() {
@@ -157,10 +156,20 @@ impl LLMAdapter for OpenAIAdapter {
             })
             .collect();
 
+        if let Some(system) = request.system_instruction.as_ref() {
+            messages.insert(0, ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessage {
+                    content: ChatCompletionRequestSystemMessageContent::Text(system.clone()),
+                    name: None,
+                }
+            ));
+        }
+
         let mut request_builder = CreateChatCompletionRequestArgs::default();
         request_builder
             .model(&request.model)
-            .messages(messages);
+            .messages(messages)
+            .stream(stream);
 
         if let Some(max_tokens) = request.max_tokens {
             request_builder.max_tokens(max_tokens);
@@ -170,9 +179,17 @@ impl LLMAdapter for OpenAIAdapter {
             request_builder.temperature(temperature);
         }
 
-        let openai_request = request_builder
+        request_builder
             .build()
-            .map_err(|e| AppError::LLMApi(format!("Failed to build request: {}", e)))?;
+            .map_err(|e| AppError::LLMApi(format!("Failed to build request: {}", e)))
+    }
+}
+
+#[async_trait]
+impl LLMAdapter for OpenAIAdapter {
+    #[allow(deprecated)]
+    async fn create_chat_completion(&self, request: &LLMRequest) -> AppResult<LLMResponse> {
+        let openai_request = Self::build_openai_request(request, false)?;
 
         let response = self
             .client
@@ -205,5 +222,26 @@ impl LLMAdapter for OpenAIAdapter {
             finish_reason,
             usage,
         })
+    }
+
+    async fn create_chat_completion_stream(&self, request: &LLMRequest) -> AppResult<BoxStream<'static, AppResult<String>>> {
+        let openai_request = Self::build_openai_request(request, true)?;
+
+        let stream = self
+            .client
+            .chat()
+            .create_stream(openai_request)
+            .await
+            .map_err(|e| AppError::LLMApi(format!("OpenAI API error: {}", e)))?;
+
+        let mapped = stream.map(|chunk| {
+            let chunk = chunk.map_err(|e| AppError::LLMApi(format!("OpenAI stream error: {}", e)))?;
+            let delta = chunk.choices.get(0)
+                .and_then(|c| c.delta.content.clone())
+                .unwrap_or_default();
+            Ok(delta)
+        });
+
+        Ok(Box::pin(mapped))
     }
 }
