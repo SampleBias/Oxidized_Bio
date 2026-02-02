@@ -13,6 +13,8 @@ use ratatui::{
     Frame,
 };
 
+const SPINNER_FRAMES: [&str; 4] = ["-", "\\", "|", "/"];
+
 /// Render the main UI
 pub fn render(frame: &mut Frame, app: &App) {
     // Main layout
@@ -59,6 +61,13 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         ApiStatus::NotConfigured => Span::styled("●", red_dot),
     };
 
+    let spinner = if matches!(app.pipeline_stage, PipelineStage::Generating) {
+        let idx = app.spinner_index % SPINNER_FRAMES.len();
+        Span::styled(SPINNER_FRAMES[idx], Theme::text_dim())
+    } else {
+        Span::raw(" ")
+    };
+
     let title_text = vec![Line::from(vec![
         Span::raw("🧬 "),
         Span::styled("Oxidized Bio", Theme::title()),
@@ -67,6 +76,8 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         llm_dot,
         Span::raw(" "),
         search_dot,
+        Span::raw(" "),
+        spinner,
     ])];
 
     let title = Paragraph::new(title_text)
@@ -554,11 +565,23 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled(" Help", Theme::shortcut_desc()),
     ];
 
+    let tps_value = if matches!(app.pipeline_stage, PipelineStage::Generating) {
+        app.stream_tps
+    } else {
+        app.last_stream_tps
+    };
+
+    let mut parts = Vec::new();
+    parts.push(status);
+    if tps_value > 0.0 {
+        parts.push(Span::raw(" │ "));
+        parts.push(Span::styled(format!("tok/s~ {:.1}", tps_value), Theme::text_dim()));
+    }
+    parts.push(Span::raw(" │ "));
+    parts.extend(shortcuts);
+
     let line = Line::from(
-        std::iter::once(status)
-            .chain(std::iter::once(Span::raw(" │ ")))
-            .chain(shortcuts)
-            .collect::<Vec<_>>(),
+        parts,
     );
 
     let paragraph = Paragraph::new(line);

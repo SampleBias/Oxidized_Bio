@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::settings::{SettingsStorage, UserSettings};
 use crate::tui::event::AppAction;
 use chrono::{DateTime, Utc};
+use std::time::Instant;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -128,6 +129,13 @@ pub struct App {
     pub llm_status: ApiStatus,
     pub search_status: ApiStatus,
 
+    // Streaming stats
+    pub stream_start: Option<Instant>,
+    pub stream_tokens: usize,
+    pub stream_tps: f32,
+    pub last_stream_tps: f32,
+    pub spinner_index: usize,
+
     // Async communication
     event_rx: Option<mpsc::Receiver<AppEvent>>,
     event_tx: Option<mpsc::Sender<AppEvent>>,
@@ -183,6 +191,11 @@ impl App {
             providers,
             llm_status: ApiStatus::NotConfigured,
             search_status: ApiStatus::NotConfigured,
+            stream_start: None,
+            stream_tokens: 0,
+            stream_tps: 0.0,
+            last_stream_tps: 0.0,
+            spinner_index: 0,
             event_rx: Some(rx),
             event_tx: Some(tx),
         };
@@ -212,6 +225,17 @@ impl App {
         );
         
         app
+    }
+
+    fn reset_stream_stats(&mut self) {
+        self.stream_start = None;
+        self.stream_tokens = 0;
+        self.stream_tps = 0.0;
+    }
+
+    fn estimate_tokens(text: &str) -> usize {
+        let chars = text.chars().count();
+        if chars == 0 { 0 } else { (chars + 3) / 4 }
     }
 
     /// Update API status indicators based on current configuration
@@ -342,6 +366,15 @@ impl App {
                 self.current_objective = Some(objective);
             }
             AppEvent::ResponseChunk(chunk) => {
+                if self.stream_start.is_none() {
+                    self.stream_start = Some(Instant::now());
+                }
+                self.stream_tokens = self.stream_tokens.saturating_add(Self::estimate_tokens(&chunk));
+                if let Some(start) = self.stream_start {
+                    let elapsed = start.elapsed().as_secs_f32().max(0.001);
+                    self.stream_tps = self.stream_tokens as f32 / elapsed;
+                }
+
                 // Append to last assistant message if streaming
                 if let Some(last) = self.messages.last_mut() {
                     if last.role == MessageRole::Assistant {
@@ -357,6 +390,10 @@ impl App {
                 });
             }
             AppEvent::ResponseComplete(response) => {
+                if self.stream_start.is_some() {
+                    self.last_stream_tps = self.stream_tps;
+                    self.reset_stream_stats();
+                }
                 if let Some(last) = self.messages.last_mut() {
                     if last.role == MessageRole::Assistant {
                         last.content = response;
@@ -378,6 +415,7 @@ impl App {
                 self.scroll_to_bottom();
             }
             AppEvent::Error(error) => {
+                self.reset_stream_stats();
                 self.pipeline_stage = PipelineStage::Error(error.clone());
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
@@ -459,7 +497,11 @@ impl App {
                 self.handle_input(key_event);
             }
             AppAction::Tick => {
-                // Animation tick - could update spinner, etc.
+                if matches!(self.pipeline_stage, PipelineStage::Generating) {
+                    self.spinner_index = self.spinner_index.wrapping_add(1);
+                } else {
+                    self.spinner_index = 0;
+                }
             }
         }
     }
@@ -549,6 +591,7 @@ impl App {
         // Start research pipeline
         self.pipeline_stage = PipelineStage::Planning;
         self.current_objective = None;
+        self.reset_stream_stats();
 
         // Get event sender
         let tx = self.event_tx.clone().unwrap();

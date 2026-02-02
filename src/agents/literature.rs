@@ -171,8 +171,13 @@ impl LiteratureAgent {
 
                 // Extract key insights from highly-cited papers
                 if result.citations.unwrap_or(0) > 50 && key_insights.len() < 5 {
-                    let insight = if result.snippet.len() > 100 {
-                        format!("{}: {}", result.title, &result.snippet[..100])
+                    let snippet_preview: String = result
+                        .snippet
+                        .chars()
+                        .take(100)
+                        .collect();
+                    let insight = if result.snippet.chars().count() > 100 {
+                        format!("{}: {}", result.title, snippet_preview)
                     } else {
                         format!("{}: {}", result.title, result.snippet)
                     };
