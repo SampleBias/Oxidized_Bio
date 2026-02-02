@@ -187,7 +187,7 @@ impl App {
         // Initialize text input
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Type your research question here...");
+        input.set_placeholder_text("Paste dataset path (CSV/TSV with Ensembl ID + Age columns)...");
 
         // Load settings
         let settings_storage = SettingsStorage::new();
@@ -203,12 +203,11 @@ impl App {
         // Create event channel
         let (tx, rx) = mpsc::channel(100);
 
-        // Add welcome message
+        // Add welcome message (will be updated with API status below)
         let messages = vec![ChatMessage {
             role: MessageRole::System,
             content: "Welcome to Oxidized Bio Research Agent!\n\n\
-                     Type a research question below to get started.\n\
-                     Press Ctrl+S to configure your API keys in Settings."
+                     Initializing..."
                 .to_string(),
             timestamp: Utc::now(),
         }];
@@ -270,8 +269,11 @@ impl App {
         app.messages[0].content = format!(
             "Welcome to Oxidized Bio Research Agent!\n\n\
              API Status: {} | {}\n\n\
-             Paste a dataset path to begin, or /help for commands.\n\
-             Press Ctrl+S to configure your API keys in Settings.",
+             🔬 AUTOMATED WORKFLOW\n\
+             Paste a dataset path (.csv or .tsv) to begin automated analysis:\n\
+             → Upload → Plan → Literature → Findings → Drafts 1-3 → LaTeX\n\n\
+             Requirements: Dataset must include Ensembl ID and Age columns.\n\n\
+             Commands: Type /help for manual commands | Ctrl+S for Settings",
             llm_status_str, search_status_str
         );
         
@@ -606,7 +608,12 @@ impl App {
 
         // Clear input
         self.input = TextArea::default();
-        self.input.set_placeholder_text("Type a question or /help for commands...");
+        // Update placeholder based on workflow stage
+        let placeholder = match self.workflow_stage {
+            WorkflowStage::Upload => "Paste dataset path (CSV/TSV with Ensembl ID + Age columns)...",
+            _ => "Type a question or /help for commands...",
+        };
+        self.input.set_placeholder_text(placeholder);
 
         // Add user message
         self.messages.push(ChatMessage {
