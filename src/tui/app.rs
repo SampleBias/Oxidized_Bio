@@ -269,7 +269,7 @@ impl App {
         app.messages[0].content = format!(
             "Welcome to Oxidized Bio Research Agent!\n\n\
              API Status: {} | {}\n\n\
-             🔬 AUTOMATED WORKFLOW\n\
+             AUTOMATED WORKFLOW\n\
              Paste a dataset path (.csv or .tsv) to begin automated analysis:\n\
              → Upload → Plan → Literature → Findings → Drafts 1-3 → LaTeX\n\n\
              Requirements: Dataset must include Ensembl ID and Age columns.\n\n\

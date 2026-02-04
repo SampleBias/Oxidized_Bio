@@ -69,7 +69,6 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let title_text = vec![Line::from(vec![
-        Span::raw("🧬 "),
         Span::styled("Oxidized Bio", Theme::title()),
         Span::styled(" Research Agent", Theme::text_secondary()),
         Span::raw("  "),
